@@ -168,17 +168,7 @@
   .deskbar .db-apps { font-weight: 600; padding: 0 14px; flex: none; }
   .deskbar .db-sep { width: 1px; height: 20px; background: #46464c; margin: 0 8px; flex: none; }
   .deskbar .db-clock { margin-left: auto; padding-left: 12px; color: #d6d6da; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .chip {
-    all: unset; box-sizing: border-box; cursor: pointer; position: relative;
-    display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px;
-    border-radius: 10px; min-width: 0; max-width: 190px; white-space: nowrap; flex: 0 1 190px;
-  }
-  .chip span.t { overflow: hidden; text-overflow: ellipsis; }
-  .chip:hover { background: #3e3e44; }
-  .chip.on { background: #303036; font-weight: 600; }
-  .chip.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 1px; height: 2px; background: #4d8cf0; border-radius: 2px; }
-  .chip:focus-visible { outline: 3px solid #4d8cf0; outline-offset: 1px; }
-  .chip i { width: 16px; height: 16px; border-radius: 4px; flex: none; }
+  .deskbar .db-title { font-weight: 600; margin-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
   /* Ce que fait chaque entrée */
   .map { display: grid; grid-template-columns: minmax(0,1fr); border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; }
@@ -215,11 +205,35 @@
   .faq summary { cursor: pointer; font-weight: 600; }
   .faq p { margin: 10px 0 0; color: var(--muted); max-width: 40em; }
 
-  footer { padding: 36px 0 60px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+  footer { padding: 36px 0 150px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+
+  /* Dock (démo) */
+  .dock-wrap { position: fixed; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; pointer-events: none; z-index: 40; }
+  .dock {
+    pointer-events: auto; position: relative; box-sizing: border-box; height: 74px;
+    display: flex; align-items: flex-end; gap: 8px; padding: 8px 12px 14px; border-radius: 22px;
+    background: rgba(28,28,30,.62); -webkit-backdrop-filter: blur(16px) saturate(1.3); backdrop-filter: blur(16px) saturate(1.3);
+    border: 1px solid rgba(255,255,255,.2); box-shadow: 0 18px 40px -14px rgba(17,22,28,.55);
+  }
+  .dock::before { content: ""; position: absolute; left: -24px; right: -24px; top: -52px; height: 52px; }
+  .d-item { all: unset; position: relative; cursor: pointer; display: block; flex: none; width: var(--s, 52px); height: var(--s, 52px); transition: width .09s, height .09s; border-radius: 22%; }
+  .d-item:focus-visible { outline: 3px solid #4d8cf0; outline-offset: 3px; }
+  .d-icon { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 22%; box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 4px 10px -4px rgba(0,0,0,.5); }
+  .d-icon svg { width: 56%; height: 56%; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .d-dot { position: absolute; left: 50%; bottom: -9px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: #f5f5f7; display: none; }
+  .d-item.run .d-dot { display: block; }
+  .d-sep { width: 1px; align-self: stretch; margin: 6px 4px 6px; background: rgba(255,255,255,.3); }
+  .d-label {
+    position: absolute; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%);
+    background: #2c2c30; color: #f5f5f7; padding: 5px 12px; border-radius: 8px; font-size: 14px; line-height: 1.3;
+    white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .1s; border: 1px solid #4e4e54;
+  }
+  .d-item:hover .d-label, .d-item:focus-visible .d-label { opacity: 1; }
+  @media (max-width: 640px) { .dock { height: 62px; gap: 6px; padding: 8px 10px 12px; } }
 
   /* Toast */
   #toast {
-    position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px);
+    position: fixed; left: 50%; bottom: 132px; transform: translate(-50%, 20px);
     background: var(--ink); color: #fff; padding: 11px 18px; border-radius: 10px;
     font-size: 15px; opacity: 0; pointer-events: none; transition: .2s; z-index: 50; max-width: calc(100vw - 32px);
   }
@@ -240,7 +254,6 @@
     .row { grid-template-columns: minmax(0,1fr); gap: 4px; }
     .row.head { display: none; }
     .topbar nav { display: none; }
-    .deskbar .chip:nth-of-type(n+3) { display: none; }
     .menu .sub { position: static; width: auto; box-shadow: none; border: 0; padding: 0 0 0 12px; background: transparent; }
   }
   @media (max-width: 380px) { .menu { width: calc(100vw - 32px); } }
@@ -278,7 +291,7 @@
   <div class="hero">
     <div>
       <h1>Le menu Apple, sur Windows.</h1>
-      <p class="lead">Une barre fine reste en haut de l’écran : le menu système à gauche, vos applications, vos fenêtres ouvertes et l’heure. Un clic, et vous éteignez, redémarrez, verrouillez ou lancez un programme.</p>
+      <p class="lead">Une barre fine reste en haut de l’écran, avec le menu système, vos applications et l’heure. En bas, un Dock flottant réunit vos applications préférées et celles qui sont ouvertes, avec des icônes qui grossissent sous la souris.</p>
       <div class="actions">
         <a class="btn primary" id="dl" href="#installer">Télécharger le MSI</a>
         <a class="btn ghost" id="src" href="#installer">Voir le code</a>
@@ -288,7 +301,7 @@
 
     <div class="stage" aria-live="polite">
       <h2>Essayez le menu</h2>
-      <p>Cliquez sur le bouton noir entouré de bleu, ou sur « Applications », en haut à gauche. Cette démo ne touche pas à votre ordinateur : elle affiche ce que l’application ferait.</p>
+      <p>Cliquez sur le bouton noir entouré de bleu, sur « Applications », ou passez la souris sur le Dock en bas de la page. Cette démo ne touche pas à votre ordinateur : elle affiche ce que l’application ferait.</p>
       <pre id="log">En attente d’une action…</pre>
     </div>
   </div>
@@ -297,20 +310,19 @@
     <h2 class="title">Chaque entrée fait une chose.</h2>
     <p class="sub">Le menu reprend l’organisation de celui de macOS et appelle les outils déjà présents dans Windows. Rien n’est réinstallé ni remplacé.</p>
 
-    <div class="deskbar" id="deskbar" aria-label="Aperçu de la barre (cliquez sur une fenêtre)">
+    <div class="deskbar" id="deskbar" aria-label="Aperçu de la barre du haut">
       <span class="db-glyph"><span class="glyph" aria-hidden="true"><i></i><i></i><i></i><i></i></span></span>
       <span class="db-apps">Applications</span>
       <span class="db-sep"></span>
-      <button class="chip" type="button"><i style="background:#e8b43c"></i><span class="t">Explorateur de fichiers</span></button>
-      <button class="chip on" type="button"><i style="background:#3b82d6"></i><span class="t">Documentation – Navigateur</span></button>
-      <button class="chip" type="button"><i style="background:#d9604c"></i><span class="t">Notes de réunion</span></button>
-      <button class="chip" type="button"><i style="background:#4aa56a"></i><span class="t">Calculatrice</span></button>
+      <span class="db-title">Documentation – Navigateur</span>
       <span class="db-clock">jeu. 15 oct.   07:46</span>
     </div>
     <div class="map" role="table" aria-label="Actions du menu">
       <div class="row head" role="row"><span role="columnheader">Entrée</span><span role="columnheader">Ce qui se passe</span><span role="columnheader">Appel Windows</span></div>
       <div class="row" role="row"><b role="cell">Applications</b><span role="cell">Liste vos programmes du menu Démarrer, classés par lettre. Un clic lance le programme. « Toutes les applications… » ouvre aussi celles du Microsoft Store.</span><span role="cell"><code>Start Menu\Programs</code></span></div>
-      <div class="row" role="row"><b role="cell">Fenêtres ouvertes</b><span role="cell">Un bouton par fenêtre. Clic : l’afficher ou la réduire. Clic droit : Afficher, Réduire ou Fermer.</span><span role="cell"><code>EnumWindows</code></span></div>
+      <div class="row" role="row"><b role="cell">Dock</b><span role="cell">Barre flottante en bas de l’écran : vos applications épinglées, celles qui sont ouvertes (un point dessous) et la Corbeille. Les icônes grossissent sous la souris.</span><span role="cell"><code>UpdateLayeredWindow</code></span></div>
+      <div class="row" role="row"><b role="cell">Clic sur une icône du Dock</b><span role="cell">Ouvre l’application, ou ramène sa fenêtre devant. Avec plusieurs fenêtres, chaque clic passe à la suivante.</span><span role="cell"><code>SetForegroundWindow</code></span></div>
+      <div class="row" role="row"><b role="cell">Clic droit sur une icône</b><span role="cell">Afficher, Réduire, Fermer, ou Garder dans le Dock / Retirer du Dock. Sur la Corbeille : l’ouvrir ou la vider.</span><span role="cell"><code>%APPDATA%\MenuWindows\dock.txt</code></span></div>
       <div class="row" role="row"><b role="cell">À propos de ce PC</b><span role="cell">Affiche le nom du PC, le processeur, la mémoire et la version de Windows.</span><span role="cell"><code>ms-settings:about</code></span></div>
       <div class="row" role="row"><b role="cell">Paramètres système…</b><span role="cell">Ouvre les paramètres de Windows.</span><span role="cell"><code>ms-settings:</code></span></div>
       <div class="row" role="row"><b role="cell">Microsoft Store…</b><span role="cell">Ouvre la boutique d’applications.</span><span role="cell"><code>ms-windows-store:</code></span></div>
@@ -327,7 +339,7 @@
 
   <section id="installer">
     <h2 class="title">Installez-le en trois étapes.</h2>
-    <p class="sub">Le programme se lance tout seul à chaque ouverture de session. Il tient dans un seul fichier de moins de 2 Mo, et la barre réserve sa place en haut de l’écran : les fenêtres agrandies s’arrêtent juste dessous.</p>
+    <p class="sub">Le programme se lance tout seul à chaque ouverture de session. Il tient dans un seul fichier d’environ 2 Mo. La barre du haut réserve sa place : les fenêtres agrandies s’arrêtent juste dessous.</p>
     <ol class="steps">
       <li><h3>Choisissez votre MSI</h3><p>Un fichier par type de PC : 64 bits, ARM ou 32 bits. La page vous indique le bon, sinon voyez ci-dessous.</p></li>
       <li><h3>Lancez l’installation</h3><p>Double-cliquez sur le fichier et acceptez la demande d’administrateur. Le bouton apparaît tout de suite en haut à gauche.</p></li>
@@ -349,12 +361,16 @@
     <details><summary>Comment le désinstaller ?</summary><p>Ouvrez Paramètres, puis Applications, puis Applications installées. Cherchez « Menu Windows » et choisissez Désinstaller. Le démarrage automatique est supprimé en même temps.</p></details>
     <details><summary>Le bouton gêne une fenêtre, que faire ?</summary><p>Il est petit et fixé dans le coin. Si vous préférez ne pas le voir, quittez-le avec la dernière entrée du menu, puis relancez-le depuis le menu Démarrer quand vous en avez besoin.</p></details>
     <details><summary>Le programme envoie-t-il des données ?</summary><p>Non. Il n’utilise pas Internet : il appelle uniquement des fonctions de Windows quand vous cliquez sur une entrée.</p></details>
-    <details><summary>Peut-on garder la barre des tâches de Windows ?</summary><p>Oui. La barre de Menu Windows s’ajoute en haut et ne remplace rien. Vous pouvez laisser celle de Windows en bas, ou la masquer automatiquement dans les paramètres de Windows.</p></details>
+    <details><summary>Peut-on garder la barre des tâches de Windows ?</summary><p>Oui. La barre du haut et le Dock s’ajoutent sans rien remplacer. Le Dock se pose juste au-dessus de la barre de Windows. Pour retrouver un écran comme sur un Mac, masquez la barre de Windows automatiquement : Paramètres, Personnalisation, Barre des tâches, Comportements.</p></details>
+    <details><summary>Comment ajouter ou retirer une application du Dock ?</summary><p>Lancez l’application, faites un clic droit sur son icône dans le Dock, puis choisissez « Garder dans le Dock ». « Retirer du Dock » fait l’inverse. La liste est enregistrée dans le fichier <code>%APPDATA%\MenuWindows\dock.txt</code>.</p></details>
+    <details><summary>Le Dock se cache-t-il quand je joue ou que je regarde une vidéo en plein écran ?</summary><p>Oui. Il s’efface quand une application passe en plein écran et revient ensuite.</p></details>
     <details><summary>Quelles versions de Windows sont prises en charge ?</summary><p>Windows 10 et Windows 11, en 64 bits (x64), sur ARM (ARM64) et en 32 bits (x86). Il n’existe pas de version pour macOS ni Linux.</p></details>
   </section>
 
   <footer>Menu Windows est un projet indépendant. Il n’est ni affilié ni approuvé par Apple ou par Microsoft.</footer>
 </main>
+
+<div class="dock-wrap"><nav class="dock" id="dock" aria-label="Dock : applications épinglées et ouvertes"></nav></div>
 
 <div id="toast" role="status"></div>
 
@@ -569,17 +585,63 @@
     }
   });
 
-  // Aperçu de la barre : un clic sur une fenêtre l’active (un second clic la réduit).
-  var chips = Array.prototype.slice.call(document.querySelectorAll("#deskbar .chip"));
-  chips.forEach(function (c) {
-    c.addEventListener("click", function () {
-      var wasOn = c.classList.contains("on");
-      chips.forEach(function (o) { o.classList.remove("on"); });
-      if (!wasOn) c.classList.add("on");
-      say(wasOn ? "ShowWindow(SW_MINIMIZE) → « " + c.textContent + " » réduite"
-                : "SetForegroundWindow → « " + c.textContent + " » au premier plan");
+  // Dock (démo) : les icônes grossissent sous la souris, comme dans l’application.
+  (function () {
+    var G = function (a, b) { return "linear-gradient(160deg," + a + "," + b + ")"; };
+    var ICONS = {
+      files:    '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+      browser:  '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>',
+      settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>',
+      notes:    '<svg viewBox="0 0 24 24"><path d="M6 3.5h12v17H6zM9 8.5h6M9 12.5h6M9 16.5h3.5"/></svg>',
+      calc:     '<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h2M12 12h2M8 16h2M12 16h2"/></svg>',
+      bin:      '<svg viewBox="0 0 24 24" style="stroke:#38404a"><path d="M4.5 7h15M9 7V4h6v3M6.5 7l1 13h9l1-13M10 11v6M14 11v6"/></svg>'
+    };
+    var DOCK = [
+      { label: "Explorateur de fichiers", icon: "files",    bg: G("#f6c84c", "#df8f26"), run: false, log: "ShellExecute(« explorer.exe ») → ouvre l’Explorateur de fichiers" },
+      { label: "Navigateur",              icon: "browser",  bg: G("#58a6ff", "#2f6fd8"), run: true,  log: "SetForegroundWindow → « Navigateur » au premier plan" },
+      { label: "Paramètres",              icon: "settings", bg: G("#9aa0aa", "#656b76"), run: false, log: "ShellExecute(« ms-settings: ») → ouvre les paramètres" },
+      { label: "Bloc-notes",              icon: "notes",    bg: G("#ff8a6b", "#d9503a"), run: true,  log: "SetForegroundWindow → « Bloc-notes » au premier plan" },
+      { label: "Calculatrice",            icon: "calc",     bg: G("#5fd08a", "#2f9b5c"), run: false, log: "ShellExecute(« calc.exe ») → ouvre la Calculatrice" },
+      { sep: true },
+      { label: "Corbeille",               icon: "bin",      bg: G("#e3e7ec", "#aab3be"), run: false, log: "ShellExecute(« shell:RecycleBinFolder ») → ouvre la Corbeille" }
+    ];
+    var dock = document.getElementById("dock");
+    var els = [], rest = [];
+    DOCK.forEach(function (d) {
+      if (d.sep) { var sp = document.createElement("span"); sp.className = "d-sep"; sp.setAttribute("aria-hidden", "true"); dock.appendChild(sp); els.push(sp); return; }
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "d-item" + (d.run ? " run" : "");
+      b.setAttribute("aria-label", d.label + (d.run ? " (ouverte)" : ""));
+      b.innerHTML = '<span class="d-icon" style="background:' + d.bg + '">' + ICONS[d.icon] + '</span><span class="d-dot"></span><span class="d-label"></span>';
+      b.querySelector(".d-label").textContent = d.label;
+      b.addEventListener("click", function () { say(d.log); });
+      b.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        say("Clic droit → " + (d.run ? "Afficher · Réduire · Fermer · Retirer du Dock" : "Ouvrir · Retirer du Dock"));
+      });
+      dock.appendChild(b); els.push(b);
     });
-  });
+    var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function base() { return window.innerWidth < 640 ? 42 : 52; }
+    function setSizes(f) {
+      els.forEach(function (e, i) { if (!e.classList.contains("d-sep")) e.style.setProperty("--s", f(i) + "px"); });
+    }
+    function layoutRest() {
+      setSizes(base);
+      rest = els.map(function (e) { var r = e.getBoundingClientRect(); return r.left + r.width / 2; });
+    }
+    dock.addEventListener("pointermove", function (ev) {
+      if (reduce || ev.pointerType === "touch") return;
+      var b = base(), mx = b * 1.65, R = b * 2.4;
+      setSizes(function (i) {
+        var d = Math.abs(ev.clientX - rest[i]);
+        return b + (mx - b) * (d < R ? 0.5 * (1 + Math.cos(Math.PI * d / R)) : 0);
+      });
+    });
+    dock.addEventListener("pointerleave", function () { setSizes(base); });
+    window.addEventListener("resize", layoutRest);
+    layoutRest();
+  })();
 
   // Horloge de la barre
   function tick() {

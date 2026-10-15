@@ -1,15 +1,25 @@
 # Menu Windows
 
-Un menu système façon « menu Apple » pour Windows. Une barre fine reste en haut de l'écran (elle réserve sa place : les fenêtres agrandies s'arrêtent dessous) :
+Un menu système façon « menu Apple » pour Windows, avec un Dock comme sur macOS.
+
+**Une barre fine en haut de l'écran** (elle réserve sa place : les fenêtres agrandies s'arrêtent dessous) :
 
 - **Bouton menu** (à gauche, ou `Ctrl+Alt+M`) : À propos de ce PC · Paramètres système · Microsoft Store · Éléments récents · Forcer à quitter · Mettre en veille · Redémarrer · Éteindre · Verrouiller l'écran · Fermer la session · Quitter
 - **Applications** : les programmes du menu Démarrer, classés par lettre, plus « Toutes les applications… » (y compris celles du Microsoft Store)
-- **Fenêtres ouvertes** : un bouton par fenêtre, comme une barre des tâches. Clic : afficher ou réduire. Clic droit : Afficher / Réduire / Fermer
-- **Date et heure** à droite
+- **Nom de la fenêtre active** en gras, puis la **date et l'heure** à droite
 
-**Aucun ancien menu Windows** : tous les menus (menu principal, Applications, clic droit sur une fenêtre) et la confirmation avant Redémarrer / Éteindre / Fermer la session sont dessinés par le programme, dans le style de la barre (fond sombre, coins arrondis, surbrillance bleue, sous-menus). Au clavier : flèches, Entrée, Échap, et une lettre pour sauter à l'entrée correspondante (pratique dans Applications). Les longues listes défilent à la molette ou en plaçant la souris sur les flèches en haut et en bas.
+**Un Dock flottant en bas de l'écran** (la barre des tâches « à la Mac ») :
 
-Le programme est écrit en Go (aucune dépendance), empaqueté en MSI avec WiX, et se lance à chaque ouverture de session. Il ne remplace pas la barre des tâches de Windows : vous pouvez la garder ou la masquer automatiquement.
+- vos applications épinglées, puis celles qui sont ouvertes (un **point** sous chaque application active), puis la **Corbeille** ;
+- les icônes **grossissent sous la souris**, avec une étiquette au survol ;
+- **clic** : ouvre l'application ou ramène sa fenêtre devant (avec plusieurs fenêtres, chaque clic passe à la suivante) ;
+- **clic droit** : Afficher / Réduire / Fermer, **Garder dans le Dock** / **Retirer du Dock** ; sur la Corbeille : l'ouvrir ou la vider ;
+- la liste des applications épinglées est enregistrée dans `%APPDATA%\MenuWindows\dock.txt` (un chemin par ligne, suivi si besoin d'une tabulation et de ce qu'il faut lancer) ; supprimez ce fichier pour revenir à la liste par défaut ;
+- il se cache quand une application passe en plein écran et se pose juste au-dessus de la barre de Windows (masquez celle-ci automatiquement pour retrouver un écran de Mac : Paramètres → Personnalisation → Barre des tâches → Comportements).
+
+**Aucun ancien menu Windows** : tous les menus (menu principal, Applications, clic droit sur une icône du Dock) et la confirmation avant Redémarrer / Éteindre / Fermer la session sont dessinés par le programme, dans le style de la barre (fond sombre, coins arrondis, surbrillance bleue, sous-menus). Au clavier : flèches, Entrée, Échap, et une lettre pour sauter à l'entrée correspondante (pratique dans Applications). Les longues listes défilent à la molette ou en plaçant la souris sur les flèches en haut et en bas.
+
+Le programme est écrit en Go, sans aucune dépendance, et empaqueté en MSI avec WiX. Il se lance à chaque ouverture de session et ne remplace pas la barre des tâches de Windows. Le dessin du Dock est un petit paquet indépendant de Windows (`internal/dockgfx`), testé avec `go test ./internal/...`.
 
 ## Obtenir le MSI
 

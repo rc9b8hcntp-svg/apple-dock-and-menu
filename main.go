@@ -72,6 +72,7 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		if c1 || c2 {
 			invalidate(hwnd)
 		}
+		dockRefresh() // le Dock suit les fenêtres ouvertes
 		return 0
 
 	case wmMouseMove:
@@ -119,10 +120,6 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		switch h.kind {
 		case hitMenu, hitApps:
 			openFromBar(hwnd, h.kind, h.r)
-		case hitWin:
-			activateWindow(h.hwnd)
-			refresh()
-			invalidate(hwnd)
 		}
 		return 0
 
@@ -146,14 +143,6 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		}
 		if dialogOpen {
 			return 0
-		}
-		x, y := lparamXY(lparam)
-		i := hitAt(x, y)
-		if i >= 0 && hits[i].kind == hitWin {
-			px, py := screenPos(hwnd, hits[i].r)
-			showWindowMenu(hwnd, hits[i].hwnd, px, py)
-			refresh()
-			invalidate(hwnd)
 		}
 		return 0
 
@@ -197,6 +186,7 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			} else {
 				pSetWindowPos.Call(hwnd, ^uintptr(0) /*HWND_TOPMOST*/, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate)
 			}
+			dockSetHidden(lparam != 0) // le Dock s'efface aussi
 		}
 		return 0
 
@@ -210,6 +200,7 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 
 	case wmDestroy:
 		pKillTimer.Call(hwnd, 1)
+		shutdownDock()
 		pUnregisterHotKey.Call(hwnd, 1)
 		removeAppBar(hwnd)
 		if trayAdded {
@@ -275,6 +266,7 @@ func main() {
 	addTrayIcon(hwnd)
 	pRegisterHotKey.Call(hwnd, 1, modControl|modAlt|modNoRepeat, 'M')
 	refresh()
+	initDock()
 	pSetTimer.Call(hwnd, 1, 500, 0)
 
 	var m msg

@@ -20,7 +20,6 @@ type winItem struct {
 const (
 	hitMenu = iota + 1
 	hitApps
-	hitWin
 )
 
 type hit struct {
@@ -43,9 +42,9 @@ var (
 	pressed   int // hitMenu / hitApps pendant que le menu est ouvert
 	clockText string
 
-	fontReg, fontBold                              uintptr
-	brushBar, brushHover, brushActive, brushAccent uintptr
-	brushSep, brushGlyph                           uintptr
+	fontReg, fontBold                 uintptr
+	brushBar, brushHover, brushAccent uintptr
+	brushSep, brushGlyph              uintptr
 )
 
 func sc(v float64) int32 { return int32(v*scale + 0.5) }
@@ -62,7 +61,6 @@ func initBarResources() {
 
 	brushBar, _, _ = pCreateSolidBrush.Call(rgb(28, 28, 30))
 	brushHover, _, _ = pCreateSolidBrush.Call(rgb(62, 62, 68))
-	brushActive, _, _ = pCreateSolidBrush.Call(rgb(48, 48, 54))
 	brushAccent, _, _ = pCreateSolidBrush.Call(rgb(77, 140, 240))
 	brushSep, _, _ = pCreateSolidBrush.Call(rgb(70, 70, 76))
 	brushGlyph, _, _ = pCreateSolidBrush.Call(rgb(245, 245, 247))
@@ -78,7 +76,7 @@ func initBarResources() {
 }
 
 func freeBarResources() {
-	for _, o := range []uintptr{brushBar, brushHover, brushActive, brushAccent, brushSep, brushGlyph, fontReg, fontBold} {
+	for _, o := range []uintptr{brushBar, brushHover, brushAccent, brushSep, brushGlyph, fontReg, fontBold} {
 		pDeleteObject.Call(o)
 	}
 }
@@ -297,49 +295,18 @@ func drawBar(hdc uintptr, w, h int32) {
 	clockR := rect{w - clockW - sc(10), 0, w - sc(10), h}
 	drawText(hdc, clockText, clockR, dtRight)
 
-	// Fenêtres ouvertes
-	avail := clockR.Left - sc(10) - x
-	n := int32(len(wins))
-	if n > 0 {
-		iw := avail / n
-		if iw > sc(210) {
-			iw = sc(210)
+	// Nom de la fenêtre active (comme le nom de l'application sur macOS)
+	title := ""
+	for _, wi := range wins {
+		if wi.hwnd == active {
+			title = wi.title
+			break
 		}
-		if iw < sc(64) {
-			iw = sc(64)
-		}
-		for _, wi := range wins {
-			r := rect{x, pad, x + iw - sc(4), h - pad}
-			if r.Right > clockR.Left-sc(6) {
-				break // plus de place : les suivantes restent accessibles via Alt+Tab
-			}
-			hits = append(hits, hit{r: r, kind: hitWin, hwnd: wi.hwnd})
-			isActive := wi.hwnd == active
-			if hoverIdx >= 0 && hoverIdx == len(hits)-1 {
-				fillRound(hdc, r, sc(10), brushHover)
-			} else if isActive {
-				fillRound(hdc, r, sc(10), brushActive)
-			}
-			iconSize := sc(16)
-			iy := r.Top + (r.Bottom-r.Top-iconSize)/2
-			icon := wi.icon
-			if icon == 0 {
-				icon, _, _ = pLoadIcon.Call(0, idiApp)
-			}
-			pDrawIconEx.Call(hdc, uintptr(r.Left+sc(8)), uintptr(iy), icon, uintptr(iconSize), uintptr(iconSize), 0, 0, diNormal)
-			if isActive {
-				pSelectObject.Call(hdc, fontBold)
-			} else {
-				pSelectObject.Call(hdc, fontReg)
-			}
-			tr := rect{r.Left + sc(30), r.Top, r.Right - sc(8), r.Bottom}
-			drawText(hdc, wi.title, tr, dtLeft|dtEllipsis)
-			if isActive {
-				u := rect{r.Left + sc(10), h - sc(3), r.Right - sc(10), h - sc(1)}
-				pFillRect.Call(hdc, uintptr(unsafe.Pointer(&u)), brushAccent)
-			}
-			x += iw
-		}
+	}
+	if title != "" {
+		pSelectObject.Call(hdc, fontBold)
+		tr := rect{x, 0, clockR.Left - sc(16), h}
+		drawText(hdc, title, tr, dtLeft|dtEllipsis)
 	}
 }
 
@@ -432,19 +399,4 @@ func trackLeave(hwnd uintptr) {
 	tme.Size = uint32(unsafe.Sizeof(tme))
 	pTrackMouseEvent.Call(uintptr(unsafe.Pointer(&tme)))
 	tracking = true
-}
-
-// activateWindow : restaure / affiche / réduit une fenêtre, comme la barre des tâches.
-func activateWindow(h uintptr) {
-	if ic, _, _ := pIsIconic.Call(h); ic != 0 {
-		pShowWindow.Call(h, swRestore)
-		pSetForeground.Call(h)
-		return
-	}
-	fg, _, _ := pGetForeground.Call()
-	if fg == h {
-		pShowWindow.Call(h, swMinimize)
-		return
-	}
-	pSetForeground.Call(h)
 }

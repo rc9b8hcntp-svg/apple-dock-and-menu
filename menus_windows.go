@@ -25,6 +25,8 @@ type labels struct {
 	appTitle, tip                                    string
 	cancel, confirmHint                              string
 	restartBtn, shutdownBtn, logoffBtn               string
+	open, pin, unpin, bin, openBin, emptyBin         string
+	confirmEmpty, emptyHint, emptyBtn                string
 }
 
 var fr = labels{
@@ -41,6 +43,9 @@ var fr = labels{
 	tip:      "Menu Windows (Ctrl+Alt+M)",
 	cancel:   "Annuler", confirmHint: "Les documents non enregistrés seront perdus.",
 	restartBtn: "Redémarrer", shutdownBtn: "Éteindre", logoffBtn: "Fermer la session",
+	open: "Ouvrir", pin: "Garder dans le Dock", unpin: "Retirer du Dock", bin: "Corbeille",
+	openBin: "Ouvrir la Corbeille", emptyBin: "Vider la Corbeille…",
+	confirmEmpty: "Vider la Corbeille ?", emptyHint: "Les éléments seront supprimés définitivement.", emptyBtn: "Vider",
 }
 
 var en = labels{
@@ -57,6 +62,9 @@ var en = labels{
 	tip:      "Menu Windows (Ctrl+Alt+M)",
 	cancel:   "Cancel", confirmHint: "Unsaved changes will be lost.",
 	restartBtn: "Restart", shutdownBtn: "Shut Down", logoffBtn: "Log Out",
+	open: "Open", pin: "Keep in Dock", unpin: "Remove from Dock", bin: "Recycle Bin",
+	openBin: "Open Recycle Bin", emptyBin: "Empty Recycle Bin…",
+	confirmEmpty: "Empty the Recycle Bin?", emptyHint: "Items will be permanently deleted.", emptyBtn: "Empty",
 }
 
 var t labels
@@ -75,9 +83,6 @@ const (
 	cmdLogoff
 	cmdQuitApp
 	cmdAllApps
-	cmdWinShow
-	cmdWinMin
-	cmdWinClose
 )
 
 const cmdAppBase = 1000 // les applications du menu Démarrer commencent ici
@@ -211,28 +216,6 @@ func showAppsMenu(hwnd uintptr, x, y int32) {
 		openURI("shell:AppsFolder")
 	case cmd >= cmdAppBase && cmd-cmdAppBase < len(apps):
 		openURI(apps[cmd-cmdAppBase].path)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Menu contextuel d'une fenêtre de la barre
-// ---------------------------------------------------------------------------
-
-func showWindowMenu(hwnd, target uintptr, x, y int32) {
-	items := []mItem{
-		mi(cmdWinShow, t.restoreWin),
-		mi(cmdWinMin, t.minimizeWin),
-		msep(),
-		mi(cmdWinClose, t.closeWin),
-	}
-	switch trackMenu(hwnd, items, x, y) {
-	case cmdWinShow:
-		pShowWindow.Call(target, swRestore)
-		pSetForeground.Call(target)
-	case cmdWinMin:
-		pShowWindow.Call(target, swMinimize)
-	case cmdWinClose:
-		pPostMessage.Call(target, wmClose, 0, 0)
 	}
 }
 

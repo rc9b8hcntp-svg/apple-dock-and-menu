@@ -64,6 +64,9 @@ var (
 	menuOpen      bool // un menu est affiché
 	dialogOpen    bool // une boîte de confirmation est affichée
 	ignoreNextUp  bool // le clic qui a fermé le menu ne doit pas rouvrir quoi que ce soit
+
+	// Remplace le texte d'avertissement de la boîte de confirmation (vide = texte par défaut).
+	confirmHintOverride string
 )
 
 func makeFont(px int32, weight int) uintptr {
@@ -624,7 +627,7 @@ func menuPress() {
 	p := cursorPt()
 	if levelAt(p) < 0 {
 		// Clic en dehors : on ferme sans transmettre le clic.
-		if inBar(p) {
+		if inBar(p) || inDock(p) {
 			ignoreNextUp = true
 		}
 		cancelMenu()
@@ -685,7 +688,7 @@ func menuOutsideClickGuard() {
 	if levelAt(p) >= 0 {
 		return
 	}
-	if inBar(p) {
+	if inBar(p) || inDock(p) {
 		ignoreNextUp = true
 	} else {
 		mLost = true // le clic va à une autre fenêtre : on ne reprend pas le focus
@@ -1030,7 +1033,11 @@ func confirm(owner uintptr, title, okLabel string) bool {
 	dialogOpen = true
 	defer func() { dialogOpen = false }()
 
-	dlg.title, dlg.hint, dlg.ok, dlg.cancel = title, t.confirmHint, okLabel, t.cancel
+	hint := t.confirmHint
+	if confirmHintOverride != "" {
+		hint = confirmHintOverride
+	}
+	dlg.title, dlg.hint, dlg.ok, dlg.cancel = title, hint, okLabel, t.cancel
 	dlg.hover, dlg.press, dlg.result, dlg.done, dlg.tracking = -1, -1, false, false, false
 
 	// Mesures
