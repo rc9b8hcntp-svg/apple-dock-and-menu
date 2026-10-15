@@ -161,14 +161,13 @@
 
   /* Aperçu de la barre */
   .deskbar {
-    display: flex; align-items: center; gap: 4px; height: 44px; padding: 0 12px;
+    display: flex; align-items: center; height: 32px; padding: 0 8px;
     background: #1c1c1e; color: #f5f5f7; border-radius: 12px; font-size: 14px; margin-bottom: 28px; overflow: hidden;
   }
-  .deskbar .db-glyph { width: 44px; height: 28px; border-radius: 12px; display: grid; place-items: center; flex: none; }
-  .deskbar .db-apps { font-weight: 600; padding: 0 14px; flex: none; }
-  .deskbar .db-sep { width: 1px; height: 20px; background: #46464c; margin: 0 8px; flex: none; }
-  .deskbar .db-clock { margin-left: auto; padding-left: 12px; color: #d6d6da; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .deskbar .db-title { font-weight: 600; margin-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .deskbar .db-glyph { width: 34px; height: 24px; border-radius: 6px; display: grid; place-items: center; flex: none; }
+  .deskbar .db-title { font-weight: 600; padding: 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 260px; }
+  .deskbar .db-apps { padding: 0 10px; flex: none; }
+  .deskbar .db-clock { margin-left: auto; padding: 0 2px 0 12px; color: #f5f5f7; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
   /* Ce que fait chaque entrée */
   .map { display: grid; grid-template-columns: minmax(0,1fr); border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; }
@@ -291,7 +290,7 @@
   <div class="hero">
     <div>
       <h1>Le menu Apple, sur Windows.</h1>
-      <p class="lead">Une barre fine reste en haut de l’écran, avec le menu système, vos applications et l’heure. En bas, un Dock flottant réunit vos applications préférées et celles qui sont ouvertes, avec des icônes qui grossissent sous la souris.</p>
+      <p class="lead">Une barre fine, façon barre des menus de macOS, reste en haut de l’écran : le menu système, le nom de l’application active, vos applications et l’heure. En bas, un Dock flottant réunit vos applications préférées et celles qui sont ouvertes, avec des icônes qui grossissent sous la souris.</p>
       <div class="actions">
         <a class="btn primary" id="dl" href="#installer">Télécharger le MSI</a>
         <a class="btn ghost" id="src" href="#installer">Voir le code</a>
@@ -312,10 +311,9 @@
 
     <div class="deskbar" id="deskbar" aria-label="Aperçu de la barre du haut">
       <span class="db-glyph"><span class="glyph" aria-hidden="true"><i></i><i></i><i></i><i></i></span></span>
+      <span class="db-title">Navigateur</span>
       <span class="db-apps">Applications</span>
-      <span class="db-sep"></span>
-      <span class="db-title">Documentation – Navigateur</span>
-      <span class="db-clock">jeu. 15 oct.   07:46</span>
+      <span class="db-clock">jeu. 15 oct. 07:46</span>
     </div>
     <div class="map" role="table" aria-label="Actions du menu">
       <div class="row head" role="row"><span role="columnheader">Entrée</span><span role="columnheader">Ce qui se passe</span><span role="columnheader">Appel Windows</span></div>
@@ -382,7 +380,7 @@
 
 <script>
   // ► Remplacez par votre compte et le nom de votre dépôt GitHub.
-  var REPO = "rc9b8hcntp-svg/apple-dock-and-menu";
+  var REPO = "VOTRE-NOM/menu-windows";
 
   var MAIN = [
     { id: "about",    label: "À propos de ce PC",   log: "ms-settings:about → informations sur le PC", first: true },
@@ -646,7 +644,7 @@
   // Horloge de la barre
   function tick() {
     var d = new Date();
-    var txt = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) + "   " +
+    var txt = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) + " " +
               d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
     document.getElementById("clock").textContent = txt;
     document.querySelector(".db-clock").textContent = txt;
