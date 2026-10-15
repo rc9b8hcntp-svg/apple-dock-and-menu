@@ -22,7 +22,7 @@ type labels struct {
 	restart, shutdown, lock, logoff, quit            string
 	confirmRestart, confirmShutdown, confirmLogoff   string
 	apps, allApps, restoreWin, minimizeWin, closeWin string
-	appTitle, tip                                    string
+	appTitle, tip, desktop                           string
 	cancel, confirmHint                              string
 	restartBtn, shutdownBtn, logoffBtn               string
 	open, pin, unpin, bin, openBin, emptyBin         string
@@ -41,6 +41,7 @@ var fr = labels{
 	restoreWin: "Afficher", minimizeWin: "Réduire", closeWin: "Fermer",
 	appTitle: "Menu Windows",
 	tip:      "Menu Windows (Ctrl+Alt+M)",
+	desktop:  "Bureau",
 	cancel:   "Annuler", confirmHint: "Les documents non enregistrés seront perdus.",
 	restartBtn: "Redémarrer", shutdownBtn: "Éteindre", logoffBtn: "Fermer la session",
 	open: "Ouvrir", pin: "Garder dans le Dock", unpin: "Retirer du Dock", bin: "Corbeille",
@@ -60,6 +61,7 @@ var en = labels{
 	restoreWin: "Show", minimizeWin: "Minimize", closeWin: "Close",
 	appTitle: "Menu Windows",
 	tip:      "Menu Windows (Ctrl+Alt+M)",
+	desktop:  "Desktop",
 	cancel:   "Cancel", confirmHint: "Unsaved changes will be lost.",
 	restartBtn: "Restart", shutdownBtn: "Shut Down", logoffBtn: "Log Out",
 	open: "Open", pin: "Keep in Dock", unpin: "Remove from Dock", bin: "Recycle Bin",

@@ -2,11 +2,12 @@
 
 Un menu système façon « menu Apple » pour Windows, avec un Dock comme sur macOS.
 
-**Une barre fine en haut de l'écran** (elle réserve sa place : les fenêtres agrandies s'arrêtent dessous) :
+**Une barre fine en haut de l'écran, comme la barre des menus de macOS** (24 px, elle réserve sa place : les fenêtres agrandies s'arrêtent dessous) :
 
-- **Bouton menu** (à gauche, ou `Ctrl+Alt+M`) : À propos de ce PC · Paramètres système · Microsoft Store · Éléments récents · Forcer à quitter · Mettre en veille · Redémarrer · Éteindre · Verrouiller l'écran · Fermer la session · Quitter
-- **Applications** : les programmes du menu Démarrer, classés par lettre, plus « Toutes les applications… » (y compris celles du Microsoft Store)
-- **Nom de la fenêtre active** en gras, puis la **date et l'heure** à droite
+- **Symbole du menu** (à gauche, ou `Ctrl+Alt+M`) : À propos de ce PC · Paramètres système · Microsoft Store · Éléments récents · Forcer à quitter · Mettre en veille · Redémarrer · Éteindre · Verrouiller l'écran · Fermer la session · Quitter
+- **Nom de l'application active** en gras (« Bloc-notes », « Google Chrome »… ; « Bureau » quand aucune fenêtre n'est active), puis le menu **Applications** : les programmes du menu Démarrer, classés par lettre, plus « Toutes les applications… » (y compris celles du Microsoft Store)
+- **Date et heure** à droite, au format macOS (« jeu. 15 oct. 14:32 »)
+- Comme sur macOS, un titre ne s'éclaire que lorsque son menu est ouvert, pas au simple survol.
 
 **Un Dock flottant en bas de l'écran** (la barre des tâches « à la Mac ») :
 
@@ -15,7 +16,7 @@ Un menu système façon « menu Apple » pour Windows, avec un Dock comme sur ma
 - **clic** : ouvre l'application ou ramène sa fenêtre devant (avec plusieurs fenêtres, chaque clic passe à la suivante) ;
 - **clic droit** : Afficher / Réduire / Fermer, **Garder dans le Dock** / **Retirer du Dock** ; sur la Corbeille : l'ouvrir ou la vider ;
 - la liste des applications épinglées est enregistrée dans `%APPDATA%\MenuWindows\dock.txt` (un chemin par ligne, suivi si besoin d'une tabulation et de ce qu'il faut lancer) ; supprimez ce fichier pour revenir à la liste par défaut ;
-- **icônes personnalisées** : déposez des images `.png` ou `.ico` dans `%APPDATA%\MenuWindows\icons` ; le nom du fichier est celui du programme sans l'extension (`notepad.png` remplace l'icône de `notepad.exe`). Pour la Corbeille : `trash.png` (vide) et `trash-full.png` (pleine). Supprimez le fichier pour retrouver l'icône d'origine. Relancez le programme pour que le changement soit pris en compte ;
+- **icônes personnalisées** : déposez des images `.png` ou `.ico` dans `%APPDATA%\MenuWindows\icons` ; le nom du fichier est celui du programme sans l'extension (`notepad.png` remplace l'icône de `notepad.exe`). Pour la Corbeille : `trash.png` (vide) et `trash-full.png` (pleine). **Détection automatique d'après les mots** : le fichier n'a pas besoin de porter exactement le nom du `.exe`. Le programme compare le nom du fichier aux mots du nom du programme, de sa description (« Google Chrome ») et du titre de sa fenêtre, sans tenir compte des majuscules, des accents ni des tirets : `chrome.png` ou `google-chrome.png` conviennent pour `chrome.exe`, `bloc-notes.png` pour « Bloc-notes », `calc.png` pour « Calculatrice » (un début de mot d'au moins 4 lettres suffit). Quand plusieurs icônes conviennent, la plus précise (celle qui a le plus de mots) l'emporte, et le nom exact du `.exe` passe toujours en premier. Supprimez le fichier pour retrouver l'icône d'origine. Relancez le programme pour que le changement soit pris en compte ;
 - il se cache quand une application passe en plein écran et se pose juste au-dessus de la barre de Windows (masquez celle-ci automatiquement pour retrouver un écran de Mac : Paramètres → Personnalisation → Barre des tâches → Comportements).
 
 **Aucun ancien menu Windows** : tous les menus (menu principal, Applications, clic droit sur une icône du Dock) et la confirmation avant Redémarrer / Éteindre / Fermer la session sont dessinés par le programme, dans le style de la barre (fond sombre, coins arrondis, surbrillance bleue, sous-menus). Au clavier : flèches, Entrée, Échap, et une lettre pour sauter à l'entrée correspondante (pratique dans Applications). Les longues listes défilent à la molette ou en plaçant la souris sur les flèches en haut et en bas.

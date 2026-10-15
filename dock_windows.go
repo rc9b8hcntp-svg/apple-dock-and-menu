@@ -294,12 +294,13 @@ func appSprite(a *dockApp) *dockgfx.Sprite {
 			s = trashSprite(trashFull)
 		}
 	case a.frame && len(a.hwnds) > 0:
-		s = windowSprite(a.hwnds[0])
-		if s != nil {
-			s = fitSprite(s)
+		if s = customTextSprite(a.label); s == nil {
+			if s = windowSprite(a.hwnds[0]); s != nil {
+				s = fitSprite(s)
+			}
 		}
 	default:
-		if s = customAppSprite(a.path); s == nil {
+		if s = customAppSprite(a.path, a.label); s == nil {
 			s = spriteForPath(a.path)
 		}
 	}

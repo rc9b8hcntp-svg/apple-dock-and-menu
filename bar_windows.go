@@ -3,6 +3,8 @@
 package main
 
 import (
+	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -41,6 +43,7 @@ var (
 	tracking  bool
 	pressed   int // hitMenu / hitApps pendant que le menu est ouvert
 	clockText string
+	activeName string // nom de l'application active (affiché en gras, comme sur macOS)
 
 	fontReg, fontBold                 uintptr
 	brushBar, brushHover, brushAccent uintptr
@@ -55,7 +58,7 @@ func initBarResources() {
 			scale = float64(dpi) / 96
 		}
 	}
-	barH = sc(30)
+	barH = sc(24) // hauteur de la barre des menus de macOS
 	pid, _, _ := pGetCurrentPID.Call()
 	ownPID = pid
 
@@ -66,7 +69,7 @@ func initBarResources() {
 	brushGlyph, _, _ = pCreateSolidBrush.Call(rgb(245, 245, 247))
 
 	mk := func(weight int) uintptr {
-		h := -sc(14)
+		h := -sc(13)
 		f, _, _ := pCreateFont.Call(uintptr(h), 0, 0, 0, uintptr(weight), 0, 0, 0,
 			1 /*DEFAULT_CHARSET*/, 0, 0, 5 /*CLEARTYPE*/, 0, ptr(utf16("Segoe UI")))
 		return f
@@ -210,14 +213,39 @@ func refresh() bool {
 		active = newActive
 		changed = true
 	}
+	if name := appNameFor(active); name != activeName {
+		activeName = name
+		changed = true
+	}
 	return changed
+}
+
+// appNameFor donne le nom à afficher en gras à gauche de la barre : le nom
+// lisible du programme (« Bloc-notes »), comme le nom de l'app sur macOS.
+func appNameFor(h uintptr) string {
+	if h == 0 {
+		return t.desktop
+	}
+	title := ""
+	for _, w := range wins {
+		if w.hwnd == h {
+			title = w.title
+			break
+		}
+	}
+	p := cachedProcPath(h)
+	// Les applications du Store passent par ApplicationFrameHost : le titre est plus parlant.
+	if p == "" || strings.EqualFold(filepath.Base(p), "ApplicationFrameHost.exe") {
+		return title
+	}
+	return appLabel(p)
 }
 
 func updateClock() bool {
 	var d, t [64]uint16
 	pGetDateFormat.Call(0x0400, 0, 0, ptr(utf16("ddd d MMM")), uintptr(unsafe.Pointer(&d[0])), 64)
 	pGetTimeFormat.Call(0x0400, 2 /*TIME_NOSECONDS*/, 0, 0, uintptr(unsafe.Pointer(&t[0])), 64)
-	s := syscall.UTF16ToString(d[:]) + "   " + syscall.UTF16ToString(t[:])
+	s := syscall.UTF16ToString(d[:]) + " " + syscall.UTF16ToString(t[:])
 	if s == clockText {
 		return false
 	}
@@ -262,52 +290,53 @@ func drawBar(hdc uintptr, w, h int32) {
 	pSetTextColor.Call(hdc, rgb(245, 245, 247))
 	hits = hits[:0]
 
-	pad := sc(3)
-	x := sc(6)
+	// Comme sur macOS : un élément ne s'éclaire que lorsque son menu est ouvert
+	// (pas au simple survol), et chaque titre a 10 px de marge de chaque côté.
+	pad := sc(2)
+	margin := sc(10)
+	x := sc(8)
 
-	// Bouton menu (symbole)
-	menuR := rect{x, pad, x + sc(44), h - pad}
+	// Horloge à droite : « jeu. 15 oct. 14:32 »
+	pSelectObject.Call(hdc, fontReg)
+	clockR := rect{w - margin - textWidth(hdc, clockText) - sc(4), 0, w - margin, h}
+	drawText(hdc, clockText, clockR, dtRight)
+
+	// Symbole du menu système (équivalent du menu Apple)
+	menuR := rect{x, pad, x + sc(34), h - pad}
 	hits = append(hits, hit{r: menuR, kind: hitMenu})
-	if pressed == hitMenu || (hoverIdx >= 0 && hoverIdx == len(hits)-1) {
+	if pressed == hitMenu {
 		fillRound(hdc, menuR, sc(10), brushHover)
 	}
 	drawGlyph(hdc, menuR)
-	x = menuR.Right + sc(4)
+	x = menuR.Right
 
-	// Bouton Applications
-	appsR := rect{x, pad, x + sc(108), h - pad}
+	// Nom de l'application active, en gras (comme « Finder » sur macOS)
+	if activeName != "" {
+		pSelectObject.Call(hdc, fontBold)
+		nameW := textWidth(hdc, activeName)
+		maxW := sc(240)
+		if room := clockR.Left - x - 3*margin - sc(100); room < maxW {
+			maxW = room
+		}
+		if maxW < 0 {
+			maxW = 0
+		}
+		if nameW > maxW {
+			nameW = maxW
+		}
+		nameR := rect{x + margin, 0, x + margin + nameW, h}
+		drawText(hdc, activeName, nameR, dtLeft|dtEllipsis)
+		x = nameR.Right + margin
+	}
+
+	// Menu Applications, en police normale comme les autres menus de macOS
+	pSelectObject.Call(hdc, fontReg)
+	appsR := rect{x, pad, x + textWidth(hdc, t.apps) + 2*margin, h - pad}
 	hits = append(hits, hit{r: appsR, kind: hitApps})
-	if pressed == hitApps || (hoverIdx >= 0 && hoverIdx == len(hits)-1) {
+	if pressed == hitApps {
 		fillRound(hdc, appsR, sc(10), brushHover)
 	}
-	pSelectObject.Call(hdc, fontBold)
 	drawText(hdc, t.apps, appsR, dtCenter)
-	x = appsR.Right + sc(8)
-
-	// Séparateur
-	sep := rect{x, sc(7), x + 1, h - sc(7)}
-	pFillRect.Call(hdc, uintptr(unsafe.Pointer(&sep)), brushSep)
-	x += sc(10)
-
-	// Horloge à droite
-	pSelectObject.Call(hdc, fontReg)
-	clockW := sc(150)
-	clockR := rect{w - clockW - sc(10), 0, w - sc(10), h}
-	drawText(hdc, clockText, clockR, dtRight)
-
-	// Nom de la fenêtre active (comme le nom de l'application sur macOS)
-	title := ""
-	for _, wi := range wins {
-		if wi.hwnd == active {
-			title = wi.title
-			break
-		}
-	}
-	if title != "" {
-		pSelectObject.Call(hdc, fontBold)
-		tr := rect{x, 0, clockR.Left - sc(16), h}
-		drawText(hdc, title, tr, dtLeft|dtEllipsis)
-	}
 }
 
 func paintBar(hwnd uintptr) {

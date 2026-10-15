@@ -2,10 +2,10 @@
 
 // Menu Windows : un menu système façon « menu Apple » pour Windows.
 //
-// Une barre fine reste en haut de l'écran :
+// Une barre fine, façon barre des menus de macOS, reste en haut de l'écran :
 //   - à gauche, le bouton du menu système (éteindre, redémarrer, verrouiller…)
+//   - le nom de l'application active, en gras
 //   - le menu Applications (le menu Démarrer, classé par lettre)
-//   - les fenêtres ouvertes, cliquables, comme une barre des tâches
 //   - à droite, la date et l'heure
 //
 // Le menu s'ouvre aussi depuis l'icône de la zone de notification et avec
