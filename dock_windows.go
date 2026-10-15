@@ -286,14 +286,22 @@ func appSprite(a *dockApp) *dockgfx.Sprite {
 	var s *dockgfx.Sprite
 	switch {
 	case a.trash:
-		s = trashSprite(trashFull)
+		name := "trash"
+		if trashFull {
+			name = "trash-full"
+		}
+		if s = customSprite(name); s == nil {
+			s = trashSprite(trashFull)
+		}
 	case a.frame && len(a.hwnds) > 0:
 		s = windowSprite(a.hwnds[0])
 		if s != nil {
 			s = fitSprite(s)
 		}
 	default:
-		s = spriteForPath(a.path)
+		if s = customAppSprite(a.path); s == nil {
+			s = spriteForPath(a.path)
+		}
 	}
 	if s == nil {
 		s = defaultSprite()
