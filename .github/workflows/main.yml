@@ -1,0 +1,88 @@
+name: Build MSI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  msi:
+    name: MSI ${{ matrix.arch }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64      # Windows 64 bits (Intel / AMD)
+            goarch: amd64
+          - arch: x86      # Windows 32 bits
+            goarch: '386'
+          - arch: arm64    # Windows sur ARM (Snapdragon, Surface Pro X...)
+            goarch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Compute version
+        id: ver
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $v = $env:GITHUB_REF_NAME.TrimStart('v')
+          } else {
+            $v = "1.0.$env:GITHUB_RUN_NUMBER"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $v"
+
+      - name: Build menuwin.exe (${{ matrix.arch }})
+        shell: pwsh
+        env:
+          CGO_ENABLED: '0'
+          GOOS: windows
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -trimpath -ldflags "-s -w -H windowsgui" -o installer/menuwin.exe .
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: dotnet tool install --global wix --version 5.0.2
+
+      - name: Build MSI (${{ matrix.arch }})
+        shell: pwsh
+        working-directory: installer
+        run: wix build Product.wxs -arch ${{ matrix.arch }} -d Version=${{ steps.ver.outputs.version }} -o ../MenuWindows-${{ matrix.arch }}.msi
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: MenuWindows-${{ matrix.arch }}
+          path: MenuWindows-${{ matrix.arch }}.msi
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: msi
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all MSI files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: MenuWindows-*
+          merge-multiple: true
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: MenuWindows-*.msi
+          generate_release_notes: true
