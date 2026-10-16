@@ -42,19 +42,35 @@ func addTrayIcon(hwnd uintptr) {
 	trayAdded = r != 0
 }
 
-// openFromBar ouvre un menu sous un bouton de la barre en l'affichant « enfoncé ».
+// openFromBar ouvre le menu d'un titre de la barre en l'affichant « enfoncé ». Tant
+// qu'il est ouvert, glisser la souris sur un autre titre ouvre le menu de celui-ci.
 func openFromBar(hwnd uintptr, kind int, r rect) {
-	x, y := screenPos(hwnd, r)
-	pressed = kind
-	invalidate(hwnd)
-	switch kind {
-	case hitMenu:
-		showMainMenu(hwnd, x, y)
-	case hitApps:
-		showAppsMenu(hwnd, x, y)
+	for kind != 0 {
+		x, y := screenPos(hwnd, r)
+		pressed = kind
+		mSwitch = 0
+		invalidate(hwnd)
+		switch kind {
+		case hitMenu:
+			showMainMenu(hwnd, x, y)
+		case hitAppName:
+			showAppMenu(hwnd, x, y)
+		case hitApps:
+			showAppsMenu(hwnd, x, y)
+		case hitWindow:
+			showWindowMenu(hwnd, x, y)
+		}
+		pressed = 0
+		invalidate(hwnd)
+		kind = mSwitch
+		if kind != 0 {
+			nr, ok := hitRect(kind)
+			if !ok {
+				break
+			}
+			r = nr
+		}
 	}
-	pressed = 0
-	invalidate(hwnd)
 }
 
 func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
@@ -69,10 +85,14 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 	case wmTimer:
 		c1 := refresh()
 		c2 := updateClock()
+		if updateStatus() {
+			c2 = true
+		}
 		if c1 || c2 {
 			invalidate(hwnd)
 		}
 		dockRefresh() // le Dock suit les fenêtres ouvertes
+		checkTheme()  // thème « Automatique » : suit le mode clair/sombre de Windows
 		return 0
 
 	case wmMouseMove:
@@ -94,20 +114,9 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			// Clic sur la barre pendant qu'un menu est ouvert : on le ferme, sans rien rouvrir.
 			ignoreNextUp = true
 			cancelMenu()
-		} else {
-			ignoreNextUp = false
-		}
-		return 0
-
-	case wmLButtonUp:
-		if ignoreNextUp {
-			ignoreNextUp = false
 			return 0
 		}
-		if menuOpen {
-			cancelMenu()
-			return 0
-		}
+		ignoreNextUp = false
 		if dialogOpen {
 			return 0
 		}
@@ -118,8 +127,37 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		}
 		h := hits[i]
 		switch h.kind {
-		case hitMenu, hitApps:
+		case hitMenu, hitAppName, hitApps, hitWindow:
+			// Comme sur macOS, un menu s'ouvre dès que le bouton est enfoncé.
 			openFromBar(hwnd, h.kind, h.r)
+		default:
+			barDown = h.kind // icône d'état : l'action part au relâchement
+			pSetCapture.Call(hwnd)
+			invalidate(hwnd)
+		}
+		return 0
+
+	case wmLButtonUp:
+		down := barDown
+		if down != 0 {
+			barDown = 0
+			pReleaseCapture.Call()
+			invalidate(hwnd)
+		}
+		if ignoreNextUp {
+			ignoreNextUp = false
+			return 0
+		}
+		if menuOpen {
+			cancelMenu()
+			return 0
+		}
+		if dialogOpen || down == 0 {
+			return 0
+		}
+		x, y := lparamXY(lparam)
+		if i := hitAt(x, y); i >= 0 && hits[i].kind == down {
+			barAction(down)
 		}
 		return 0
 
@@ -147,6 +185,13 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		return 0
 
 	case wmHotkey:
+		if wparam == 2 { // Ctrl+Alt+L : Launchpad
+			showLaunchpad()
+			return 0
+		}
+		if lp.hwnd != 0 {
+			closeLaunchpad(true)
+		}
 		if menuOpen { // le raccourci ferme aussi le menu
 			cancelMenu()
 			return 0
@@ -154,8 +199,8 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		if dialogOpen {
 			return 0
 		}
-		if len(hits) > 0 {
-			openFromBar(hwnd, hitMenu, hits[0].r)
+		if r, ok := hitRect(hitMenu); ok {
+			openFromBar(hwnd, hitMenu, r)
 		}
 		return 0
 
@@ -201,7 +246,8 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 	case wmDestroy:
 		pKillTimer.Call(hwnd, 1)
 		shutdownDock()
-		pUnregisterHotKey.Call(hwnd, 1)
+		closeLaunchpad(false)
+		setHotkeys(false)
 		removeAppBar(hwnd)
 		if trayAdded {
 			pShellNotifyIcon.Call(nimDelete, uintptr(unsafe.Pointer(&nid)))
@@ -224,15 +270,12 @@ func main() {
 
 	pSetProcessDPIAw.Call()
 
-	lang, _, _ := pGetUILanguage.Call()
-	if lang&0xFF == 0x0C { // LANG_FRENCH
-		t = fr
-	} else {
-		t = en
-	}
+	loadConfig()
+	applyLanguage()
 
 	initBarResources()
 	initMenuResources()
+	rebuildTheme()
 	updateClock()
 
 	hInst, _, _ := pGetModuleHandle.Call(0)
@@ -250,7 +293,7 @@ func main() {
 
 	sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
 	hwnd, _, _ := pCreateWindowEx.Call(
-		wsExTopmost|wsExToolwin|wsExNoActive,
+		wsExLayered|wsExTopmost|wsExToolwin|wsExNoActive, // « layered » : pour l'opacité de la barre
 		ptr(className),
 		ptr(utf16(t.appTitle)),
 		wsPopup,
@@ -260,13 +303,15 @@ func main() {
 		return
 	}
 	barHwnd = hwnd
+	applyBarOpacity()
 
 	pShowWindow.Call(hwnd, swShowNoActivate)
 	registerAppBar(hwnd)
 	addTrayIcon(hwnd)
-	pRegisterHotKey.Call(hwnd, 1, modControl|modAlt|modNoRepeat, 'M')
+	setHotkeys(cfg.Hotkey)
 	refresh()
 	initDock()
+	applied = cfg
 	pSetTimer.Call(hwnd, 1, 500, 0)
 
 	var m msg

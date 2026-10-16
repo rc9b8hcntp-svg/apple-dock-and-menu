@@ -27,6 +27,7 @@ type labels struct {
 	restartBtn, shutdownBtn, logoffBtn               string
 	open, pin, unpin, bin, openBin, emptyBin         string
 	confirmEmpty, emptyHint, emptyBtn                string
+	launchpad, search, noResult, prefs               string
 }
 
 var fr = labels{
@@ -47,6 +48,7 @@ var fr = labels{
 	open: "Ouvrir", pin: "Garder dans le Dock", unpin: "Retirer du Dock", bin: "Corbeille",
 	openBin: "Ouvrir la Corbeille", emptyBin: "Vider la Corbeille…",
 	confirmEmpty: "Vider la Corbeille ?", emptyHint: "Les éléments seront supprimés définitivement.", emptyBtn: "Vider",
+	launchpad: "Launchpad", search: "Rechercher", noResult: "Aucun résultat", prefs: "Réglages de Menu Windows…",
 }
 
 var en = labels{
@@ -67,6 +69,7 @@ var en = labels{
 	open: "Open", pin: "Keep in Dock", unpin: "Remove from Dock", bin: "Recycle Bin",
 	openBin: "Open Recycle Bin", emptyBin: "Empty Recycle Bin…",
 	confirmEmpty: "Empty the Recycle Bin?", emptyHint: "Items will be permanently deleted.", emptyBtn: "Empty",
+	launchpad: "Launchpad", search: "Search", noResult: "No Results", prefs: "Menu Windows Settings…",
 }
 
 var t labels
@@ -85,9 +88,19 @@ const (
 	cmdLogoff
 	cmdQuitApp
 	cmdAllApps
+	cmdLaunchpad
+	cmdPrefs
+	cmdAppHide
+	cmdAppClose
+	cmdWinMin
+	cmdWinZoom
+	cmdWinClose
 )
 
-const cmdAppBase = 1000 // les applications du menu Démarrer commencent ici
+const (
+	cmdAppBase = 1000 // les applications du menu Démarrer commencent ici
+	cmdWinBase = 5000 // les fenêtres ouvertes du menu Fenêtre commencent ici
+)
 
 // ---------------------------------------------------------------------------
 // Utilitaires
@@ -111,8 +124,10 @@ func showMainMenu(hwnd uintptr, x, y int32) {
 	items := []mItem{
 		mi(cmdAbout, t.about),
 		msep(),
+		mi(cmdPrefs, t.prefs),
 		mi(cmdSettings, t.settings),
 		mi(cmdStore, t.store),
+		mi(cmdLaunchpad, t.launchpad+"\tCtrl+Alt+L"),
 		msep(),
 		mi(cmdRecent, t.recent),
 		msep(),
@@ -233,6 +248,10 @@ func execute(hwnd uintptr, cmd int) {
 		openURI("ms-settings:")
 	case cmdStore:
 		openURI("ms-windows-store:")
+	case cmdLaunchpad:
+		showLaunchpad()
+	case cmdPrefs:
+		showSettings()
 	case cmdRecent:
 		openURI("shell:recent")
 	case cmdForceQuit:
@@ -256,5 +275,97 @@ func execute(hwnd uintptr, cmd int) {
 		}
 	case cmdQuitApp:
 		pPostMessage.Call(hwnd, wmClose, 0, 0)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Menu de l'application active (comme le menu « Finder » de macOS)
+// ---------------------------------------------------------------------------
+
+// activeAppWindows donne les fenêtres de l'application active (même programme).
+func activeAppWindows() []uintptr {
+	if active == 0 {
+		return nil
+	}
+	p := cachedProcPath(active)
+	if p == "" || strings.EqualFold(filepath.Base(p), "ApplicationFrameHost.exe") {
+		return []uintptr{active} // appli du Store : une fenêtre = une appli
+	}
+	var out []uintptr
+	for _, w := range wins {
+		if w.hwnd == active || cachedProcPath(w.hwnd) == p {
+			out = append(out, w.hwnd)
+		}
+	}
+	return out
+}
+
+func showAppMenu(hwnd uintptr, x, y int32) {
+	targets := activeAppWindows()
+	items := []mItem{
+		mi(cmdAppHide, tr("Masquer ", "Hide ")+activeName),
+		mi(cmdAppClose, tr("Fermer ", "Close ")+activeName),
+	}
+	switch trackMenu(hwnd, items, x, y) {
+	case cmdAppHide:
+		for _, h := range targets {
+			pShowWindow.Call(h, swMinimize)
+		}
+	case cmdAppClose:
+		for _, h := range targets {
+			pPostMessage.Call(h, wmClose, 0, 0)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Menu Fenêtre (réduire, agrandir, fermer, liste des fenêtres ouvertes)
+// ---------------------------------------------------------------------------
+
+func clipTitle(s string, max int) string {
+	r := []rune(s)
+	if len(r) > max {
+		return string(r[:max-1]) + "…"
+	}
+	return s
+}
+
+func showWindowMenu(hwnd uintptr, x, y int32) {
+	cur := active
+	var listed []uintptr
+	for _, w := range wins {
+		listed = append(listed, w.hwnd)
+	}
+	min, zoom, closeW := mi(cmdWinMin, tr("Réduire", "Minimize")), mi(cmdWinZoom, tr("Agrandir", "Zoom")), mi(cmdWinClose, tr("Fermer la fenêtre", "Close Window"))
+	if cur == 0 {
+		min.disabled, zoom.disabled, closeW.disabled = true, true, true
+	} else if z, _, _ := pIsZoomed.Call(cur); z != 0 {
+		zoom.text = tr("Restaurer", "Restore")
+	}
+	items := []mItem{min, zoom, closeW}
+	if len(wins) > 0 {
+		items = append(items, msep())
+	}
+	for i, w := range wins {
+		mark := "    "
+		if w.hwnd == cur {
+			mark = "•  "
+		}
+		items = append(items, mi(cmdWinBase+i, mark+clipTitle(w.title, 48)))
+	}
+	cmd := trackMenu(hwnd, items, x, y)
+	switch {
+	case cmd == cmdWinMin:
+		pShowWindow.Call(cur, swMinimize)
+	case cmd == cmdWinZoom:
+		if z, _, _ := pIsZoomed.Call(cur); z != 0 {
+			pShowWindow.Call(cur, swRestore)
+		} else {
+			pShowWindow.Call(cur, 3 /*SW_MAXIMIZE*/)
+		}
+	case cmd == cmdWinClose:
+		pPostMessage.Call(cur, wmClose, 0, 0)
+	case cmd >= cmdWinBase && cmd-cmdWinBase < len(listed):
+		bringToFront(listed[cmd-cmdWinBase])
 	}
 }

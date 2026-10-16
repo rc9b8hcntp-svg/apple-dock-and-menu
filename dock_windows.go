@@ -21,6 +21,7 @@ import (
 	"unsafe"
 
 	"menuwin/internal/dockgfx"
+	"menuwin/internal/launchpad"
 )
 
 const (
@@ -51,6 +52,7 @@ type dockApp struct {
 	pinned    bool
 	frame     bool // fenêtre d'une appli du Store : une icône par fenêtre
 	trash     bool
+	launchpad bool      // première case : ouvre le Launchpad
 	hwnds     []uintptr // fenêtres, la plus récente d'abord
 	spriteKey string
 }
@@ -226,6 +228,9 @@ func buildApps() []*dockApp {
 	}
 
 	var apps []*dockApp
+	if cfg.DockLaunchpad {
+		apps = append(apps, &dockApp{key: "launchpad", launchpad: true, spriteKey: "launchpad", label: t.launchpad})
+	}
 	used := map[string]bool{}
 	for _, p := range pins {
 		k := normKey(p.path)
@@ -238,6 +243,13 @@ func buildApps() []*dockApp {
 	}
 
 	// Applications ouvertes mais non épinglées : on garde leur ordre d'arrivée.
+	if !cfg.DockRunning {
+		for k := range used {
+			delete(used, k)
+		}
+		groups = map[string]*group{}
+		order = nil
+	}
 	var keep []string
 	for _, k := range runOrder {
 		if g := groups[k]; g != nil && !used[k] {
@@ -271,11 +283,13 @@ func buildApps() []*dockApp {
 		apps = append(apps, a)
 	}
 
-	bin := "trash:empty"
-	if trashFull {
-		bin = "trash:full"
+	if cfg.DockTrash {
+		bin := "trash:empty"
+		if trashFull {
+			bin = "trash:full"
+		}
+		apps = append(apps, &dockApp{key: "trash", trash: true, spriteKey: bin, label: t.bin})
 	}
-	apps = append(apps, &dockApp{key: "trash", trash: true, spriteKey: bin, label: t.bin})
 	return apps
 }
 
@@ -285,6 +299,10 @@ func appSprite(a *dockApp) *dockgfx.Sprite {
 	}
 	var s *dockgfx.Sprite
 	switch {
+	case a.launchpad:
+		if s = customSprite("launchpad"); s == nil {
+			s = launchpad.Icon(int(dockParams.Max*1.5 + 0.5))
+		}
 	case a.trash:
 		name := "trash"
 		if trashFull {
@@ -313,7 +331,7 @@ func appSprite(a *dockApp) *dockgfx.Sprite {
 
 // dockRefresh est appelée régulièrement (toutes les 500 ms) par la barre du haut.
 func dockRefresh() {
-	if dockHwnd == 0 {
+	if dockHwnd == 0 || !cfg.DockEnabled {
 		return
 	}
 	if time.Since(trashAt) > 4*time.Second {
@@ -358,7 +376,7 @@ func rebuildItems(apps []*dockApp) {
 		}
 		wanted[a.spriteKey] = true
 		dockApps = append(dockApps, a)
-		dockItems = append(dockItems, dockgfx.Item{Sprite: appSprite(a), Running: len(a.hwnds) > 0})
+		dockItems = append(dockItems, dockgfx.Item{Sprite: appSprite(a), Running: len(a.hwnds) > 0 && cfg.DockDots})
 	}
 	for k := range spriteCache {
 		if !wanted[k] {
@@ -476,7 +494,7 @@ func setHover(i int) {
 		return
 	}
 	dockHover = i
-	if i >= 0 && i < len(dockApps) && dockApps[i] != nil {
+	if i >= 0 && i < len(dockApps) && dockApps[i] != nil && cfg.DockLabels {
 		showLabel(dockApps[i].label)
 	} else {
 		hideLabel()
@@ -546,7 +564,7 @@ func labelProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			r := rect{0, 0, w, h}
 			pFillRect.Call(mem, uintptr(unsafe.Pointer(&r)), brushMenuBg)
 			pSetBkMode.Call(mem, transparent)
-			pSetTextColor.Call(mem, rgb(245, 245, 247))
+			pSetTextColor.Call(mem, pal.menuText)
 			pSelectObject.Call(mem, fontReg)
 			drawText(mem, labelText, r, dtCenter)
 		})
@@ -573,6 +591,8 @@ func dockActivate(i int) {
 	}
 	a := dockApps[i]
 	switch {
+	case a.launchpad:
+		showLaunchpad()
 	case a.trash:
 		openURI("shell:RecycleBinFolder")
 	case len(a.hwnds) > 0:
@@ -600,6 +620,9 @@ func dockContextMenu(i int) {
 		return
 	}
 	a := dockApps[i]
+	if a.launchpad {
+		return
+	}
 	r := dockLay.Items[i]
 	x, y := dockX+int32(r.X), dockY+int32(r.Y)
 
@@ -782,7 +805,7 @@ func registerDockClasses() {
 }
 
 func initDock() {
-	dockParams = dockgfx.NewParams(scale)
+	dockParams = dockParamsFromConfig()
 	loadPins()
 	registerDockClasses()
 	hInst, _, _ := pGetModuleHandle.Call(0)
@@ -798,10 +821,20 @@ func initDock() {
 	dockRefresh()
 	pShowWindow.Call(dockHwnd, swShowNoActivate)
 	dockPaint()
+	dockUpdateHidden() // Dock désactivé dans les réglages : on le cache aussitôt
 }
 
+var dockFull bool // une application est en plein écran
+
 // dockSetHidden masque le Dock quand une application passe en plein écran.
-func dockSetHidden(hidden bool) {
+func dockSetHidden(full bool) {
+	dockFull = full
+	dockUpdateHidden()
+}
+
+// dockUpdateHidden affiche ou masque la fenêtre : plein écran, ou Dock désactivé dans les réglages.
+func dockUpdateHidden() {
+	hidden := dockFull || !cfg.DockEnabled
 	if dockHwnd == 0 || hidden == dockHidden {
 		return
 	}

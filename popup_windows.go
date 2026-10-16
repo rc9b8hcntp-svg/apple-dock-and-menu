@@ -76,17 +76,6 @@ func makeFont(px int32, weight int) uintptr {
 }
 
 func initMenuResources() {
-	brushMenuBg, _, _ = pCreateSolidBrush.Call(rgb(44, 44, 48))
-	brushBtn, _, _ = pCreateSolidBrush.Call(rgb(84, 84, 90))
-	brushBtnHover, _, _ = pCreateSolidBrush.Call(rgb(100, 100, 106))
-	brushAccentHi, _, _ = pCreateSolidBrush.Call(rgb(98, 157, 248))
-	penBorder, _, _ = pCreatePen.Call(0 /*PS_SOLID*/, 1, rgb(78, 78, 84))
-	cw := int32(1.6*scale + 0.5)
-	if cw < 1 {
-		cw = 1
-	}
-	penChev, _, _ = pCreatePen.Call(0, uintptr(cw), rgb(170, 170, 178))
-	penChevSel, _, _ = pCreatePen.Call(0, uintptr(cw), rgb(255, 255, 255))
 	fontTitle = makeFont(sc(15), 700)
 }
 
@@ -166,7 +155,7 @@ func styleWindow(hwnd uintptr, w, h int32) bool {
 	if pDwmSetWindowAttr.Find() == nil {
 		pref := uint32(2) // DWMWCP_ROUND
 		if hr, _, _ := pDwmSetWindowAttr.Call(hwnd, 33 /*DWMWA_WINDOW_CORNER_PREFERENCE*/, uintptr(unsafe.Pointer(&pref)), 4); hr == 0 {
-			col := uint32(rgb(78, 78, 84))
+			col := uint32(pal.menuBorder)
 			pDwmSetWindowAttr.Call(hwnd, 34 /*DWMWA_BORDER_COLOR*/, uintptr(unsafe.Pointer(&col)), 4)
 			return true
 		}
@@ -218,6 +207,7 @@ var (
 	mResult int
 	mDone   bool
 	mLost   bool // le menu s'est fermé parce qu'une autre fenêtre a pris le focus
+	mSwitch int  // titre de la barre vers lequel on a glissé : son menu doit s'ouvrir ensuite
 )
 
 func padOuter() int32 { return sc(6) }
@@ -478,13 +468,13 @@ func drawLevel(hdc uintptr, L *mLevel) {
 		}
 		selected := i == L.sel && !it.disabled
 		if selected {
-			fillRound(hdc, r, sc(9), brushAccent)
+			fillRR(hdc, r, sc(9), pal.accent)
 		}
-		textCol, keyCol := rgb(238, 238, 242), rgb(150, 150, 158)
+		textCol, keyCol := pal.menuText, pal.menuKey
 		if selected {
 			textCol, keyCol = rgb(255, 255, 255), rgb(225, 235, 255)
 		} else if it.disabled {
-			textCol, keyCol = rgb(110, 110, 116), rgb(110, 110, 116)
+			textCol, keyCol = pal.menuOff, pal.menuOff
 		}
 
 		right := r.Right - sc(12) - L.subW
@@ -595,6 +585,14 @@ func activate(L *mLevel, idx int) {
 
 func menuHover() {
 	p := cursorPt()
+	// Menu ouvert depuis la barre : en glissant sur un autre titre, on passe à son menu (comme sur macOS).
+	if pressed != 0 {
+		if k := barMenuKindAt(p); k != 0 && k != pressed {
+			mSwitch = k
+			cancelMenu()
+			return
+		}
+	}
 	li := levelAt(p)
 	if li < 0 {
 		// Le pointeur est sorti : on retire la surbrillance d'une entrée sans sous-menu.
@@ -930,12 +928,12 @@ func drawDialog(hdc uintptr, w, h int32) {
 	pSetBkMode.Call(hdc, transparent)
 
 	pSelectObject.Call(hdc, fontTitle)
-	pSetTextColor.Call(hdc, rgb(255, 255, 255))
+	pSetTextColor.Call(hdc, pal.menuText)
 	tr := dlg.titleR
 	pDrawText.Call(hdc, ptr(utf16(dlg.title)), ^uintptr(0), uintptr(unsafe.Pointer(&tr)), dtLeft|dtWordBreak|dtNoPrefix)
 
 	pSelectObject.Call(hdc, fontReg)
-	pSetTextColor.Call(hdc, rgb(160, 160, 168))
+	pSetTextColor.Call(hdc, pal.menuKey)
 	hr := dlg.hintR
 	pDrawText.Call(hdc, ptr(utf16(dlg.hint)), ^uintptr(0), uintptr(unsafe.Pointer(&hr)), dtLeft|dtWordBreak|dtNoPrefix)
 
@@ -953,7 +951,11 @@ func drawDialog(hdc uintptr, w, h int32) {
 			}
 		}
 		fillRound(hdc, r, sc(12), brush)
-		pSetTextColor.Call(hdc, rgb(255, 255, 255))
+		if i == 1 {
+			pSetTextColor.Call(hdc, rgb(255, 255, 255))
+		} else {
+			pSetTextColor.Call(hdc, pal.menuText)
+		}
 		if i == 1 {
 			pSelectObject.Call(hdc, fontBold)
 		} else {

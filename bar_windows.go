@@ -20,8 +20,16 @@ type winItem struct {
 }
 
 const (
-	hitMenu = iota + 1
-	hitApps
+	hitMenu    = iota + 1 // symbole du menu système
+	hitAppName            // nom de l'application active
+	hitApps               // menu Applications
+	hitWindow             // menu Fenêtre
+	hitBattery
+	hitWifi
+	hitSound
+	hitSearch
+	hitControl
+	hitClock
 )
 
 type hit struct {
@@ -31,18 +39,19 @@ type hit struct {
 }
 
 var (
-	scale     = 1.0
-	barH      int32
-	barHwnd   uintptr
-	appBarOK  bool
-	ownPID    uintptr
-	wins      []winItem
-	active    uintptr
-	hits      []hit
-	hoverIdx  = -1
-	tracking  bool
-	pressed   int // hitMenu / hitApps pendant que le menu est ouvert
-	clockText string
+	scale      = 1.0
+	barH       int32
+	barHwnd    uintptr
+	appBarOK   bool
+	ownPID     uintptr
+	wins       []winItem
+	active     uintptr
+	hits       []hit
+	hoverIdx   = -1
+	tracking   bool
+	pressed    int // type de l'élément dont le menu est ouvert
+	barDown    int // élément sur lequel le bouton de la souris est enfoncé (icônes d'état)
+	clockText  string
 	activeName string // nom de l'application active (affiché en gras, comme sur macOS)
 
 	fontReg, fontBold                 uintptr
@@ -58,15 +67,10 @@ func initBarResources() {
 			scale = float64(dpi) / 96
 		}
 	}
-	barH = sc(24) // hauteur de la barre des menus de macOS
+	barH = sc(float64(cfg.BarHeight)) // 24 par défaut : la hauteur de la barre des menus de macOS
 	pid, _, _ := pGetCurrentPID.Call()
 	ownPID = pid
-
-	brushBar, _, _ = pCreateSolidBrush.Call(rgb(28, 28, 30))
-	brushHover, _, _ = pCreateSolidBrush.Call(rgb(62, 62, 68))
-	brushAccent, _, _ = pCreateSolidBrush.Call(rgb(77, 140, 240))
-	brushSep, _, _ = pCreateSolidBrush.Call(rgb(70, 70, 76))
-	brushGlyph, _, _ = pCreateSolidBrush.Call(rgb(245, 245, 247))
+	initGDIPlus()
 
 	mk := func(weight int) uintptr {
 		h := -sc(13)
@@ -76,12 +80,15 @@ func initBarResources() {
 	}
 	fontReg = mk(400)
 	fontBold = mk(600)
+	fontIcon = makeIconFont()
+	updateStatus()
 }
 
 func freeBarResources() {
-	for _, o := range []uintptr{brushBar, brushHover, brushAccent, brushSep, brushGlyph, fontReg, fontBold} {
+	for _, o := range []uintptr{brushBar, brushHover, brushAccent, brushSep, brushGlyph, brushWin, brushSide, fontReg, fontBold, fontIcon} {
 		pDeleteObject.Call(o)
 	}
+	shutdownGDIPlus()
 }
 
 // ---------------------------------------------------------------------------
@@ -243,9 +250,26 @@ func appNameFor(h uintptr) string {
 
 func updateClock() bool {
 	var d, t [64]uint16
-	pGetDateFormat.Call(0x0400, 0, 0, ptr(utf16("ddd d MMM")), uintptr(unsafe.Pointer(&d[0])), 64)
-	pGetTimeFormat.Call(0x0400, 2 /*TIME_NOSECONDS*/, 0, 0, uintptr(unsafe.Pointer(&t[0])), 64)
-	s := syscall.UTF16ToString(d[:]) + " " + syscall.UTF16ToString(t[:])
+	// Heure : le format du système (sans les secondes), ou 24 h / 12 h imposé.
+	flags, picture := uintptr(2 /*TIME_NOSECONDS*/), uintptr(0)
+	switch {
+	case cfg.Clock == "24" && cfg.ShowSeconds:
+		flags, picture = 0, ptr(utf16("HH:mm:ss"))
+	case cfg.Clock == "24":
+		flags, picture = 0, ptr(utf16("HH:mm"))
+	case cfg.Clock == "12" && cfg.ShowSeconds:
+		flags, picture = 0, ptr(utf16("h:mm:ss tt"))
+	case cfg.Clock == "12":
+		flags, picture = 0, ptr(utf16("h:mm tt"))
+	case cfg.ShowSeconds:
+		flags = 0
+	}
+	pGetTimeFormat.Call(0x0400, flags, 0, picture, uintptr(unsafe.Pointer(&t[0])), 64)
+	s := syscall.UTF16ToString(t[:])
+	if cfg.ShowDate {
+		pGetDateFormat.Call(0x0400, 0, 0, ptr(utf16("ddd d MMM")), uintptr(unsafe.Pointer(&d[0])), 64)
+		s = syscall.UTF16ToString(d[:]) + " " + s
+	}
 	if s == clockText {
 		return false
 	}
@@ -287,35 +311,67 @@ func drawBar(hdc uintptr, w, h int32) {
 	full := rect{0, 0, w, h}
 	pFillRect.Call(hdc, uintptr(unsafe.Pointer(&full)), brushBar)
 	pSetBkMode.Call(hdc, transparent)
-	pSetTextColor.Call(hdc, rgb(245, 245, 247))
+	pSetTextColor.Call(hdc, pal.barText)
 	hits = hits[:0]
 
 	// Comme sur macOS : un élément ne s'éclaire que lorsque son menu est ouvert
-	// (pas au simple survol), et chaque titre a 10 px de marge de chaque côté.
+	// (ou pendant le clic), pas au simple survol ; chaque titre a 10 px de marge.
 	pad := sc(2)
 	margin := sc(10)
 	x := sc(8)
+	iconW := sc(28)
 
-	// Horloge à droite : « jeu. 15 oct. 14:32 »
+	add := func(kind int, r rect) {
+		hits = append(hits, hit{r: r, kind: kind})
+		if pressed == kind || barDown == kind {
+			fillRR(hdc, r, sc(9), pal.barPress)
+		}
+	}
+
+	// À droite, en partant du bord : horloge, centre de contrôle, recherche, son, Wi-Fi, batterie.
+	right := w - sc(6)
+	item := func(kind int, wd int32) rect {
+		r := rect{right - wd, pad, right, h - pad}
+		right = r.Left
+		add(kind, r)
+		return r
+	}
 	pSelectObject.Call(hdc, fontReg)
-	clockR := rect{w - margin - textWidth(hdc, clockText) - sc(4), 0, w - margin, h}
-	drawText(hdc, clockText, clockR, dtRight)
+	r := item(hitClock, textWidth(hdc, clockText)+2*sc(8))
+	drawText(hdc, clockText, r, dtCenter)
+	if cfg.ShowControl {
+		drawControlIcon(hdc, item(hitControl, iconW))
+	}
+	if cfg.ShowSearch {
+		drawIconGlyph(hdc, "\uE721", item(hitSearch, iconW), pal.barText)
+	}
+	if cfg.ShowSound {
+		drawIconGlyph(hdc, "\uE767", item(hitSound, iconW), pal.barText)
+	}
+	if cfg.ShowWifi && wifiState != wifiNone {
+		col := pal.barText
+		if wifiState == wifiOff {
+			col = pal.menuOff
+		}
+		drawIconGlyph(hdc, "\uE701", item(hitWifi, iconW), col)
+	}
+	if cfg.ShowBattery && battPct >= 0 {
+		drawBattery(hdc, item(hitBattery, batteryItemWidth(hdc)))
+	}
+	limit := right
 
 	// Symbole du menu système (équivalent du menu Apple)
 	menuR := rect{x, pad, x + sc(34), h - pad}
-	hits = append(hits, hit{r: menuR, kind: hitMenu})
-	if pressed == hitMenu {
-		fillRound(hdc, menuR, sc(10), brushHover)
-	}
+	add(hitMenu, menuR)
 	drawGlyph(hdc, menuR)
 	x = menuR.Right
 
-	// Nom de l'application active, en gras (comme « Finder » sur macOS)
-	if activeName != "" {
+	// Nom de l'application active, en gras (comme « Finder » sur macOS) : un clic ouvre son menu.
+	if cfg.ShowAppName && activeName != "" {
 		pSelectObject.Call(hdc, fontBold)
 		nameW := textWidth(hdc, activeName)
 		maxW := sc(240)
-		if room := clockR.Left - x - 3*margin - sc(100); room < maxW {
+		if room := limit - x - 3*margin - sc(100); room < maxW {
 			maxW = room
 		}
 		if maxW < 0 {
@@ -324,19 +380,55 @@ func drawBar(hdc uintptr, w, h int32) {
 		if nameW > maxW {
 			nameW = maxW
 		}
-		nameR := rect{x + margin, 0, x + margin + nameW, h}
-		drawText(hdc, activeName, nameR, dtLeft|dtEllipsis)
-		x = nameR.Right + margin
+		itemR := rect{x, pad, x + nameW + 2*margin, h - pad}
+		if active != 0 {
+			add(hitAppName, itemR)
+		}
+		drawText(hdc, activeName, rect{x + margin, 0, x + margin + nameW, h}, dtLeft|dtEllipsis)
+		x = itemR.Right
 	}
 
-	// Menu Applications, en police normale comme les autres menus de macOS
+	// Menus Applications et Fenêtre, en police normale comme les autres menus de macOS
 	pSelectObject.Call(hdc, fontReg)
-	appsR := rect{x, pad, x + textWidth(hdc, t.apps) + 2*margin, h - pad}
-	hits = append(hits, hit{r: appsR, kind: hitApps})
-	if pressed == hitApps {
-		fillRound(hdc, appsR, sc(10), brushHover)
+	menu := func(kind int, label string) {
+		r := rect{x, pad, x + textWidth(hdc, label) + 2*margin, h - pad}
+		if r.Right > limit {
+			return
+		}
+		add(kind, r)
+		drawText(hdc, label, r, dtCenter)
+		x = r.Right
 	}
-	drawText(hdc, t.apps, appsR, dtCenter)
+	if cfg.ShowApps {
+		menu(hitApps, t.apps)
+	}
+	if cfg.ShowWindow {
+		menu(hitWindow, tr("Fenêtre", "Window"))
+	}
+}
+
+// hitRect donne le rectangle d'un élément de la barre.
+func hitRect(kind int) (rect, bool) {
+	for _, h := range hits {
+		if h.kind == kind {
+			return h.r, true
+		}
+	}
+	return rect{}, false
+}
+
+// barMenuKindAt renvoie le type du menu de la barre qui se trouve sous un point
+// de l'écran (0 si aucun) : on s'en sert pour passer d'un menu à l'autre en glissant.
+func barMenuKindAt(p point) int {
+	var wr rect
+	pGetWindowRect.Call(barHwnd, uintptr(unsafe.Pointer(&wr)))
+	if i := hitAt(p.X-wr.Left, p.Y-wr.Top); i >= 0 {
+		switch k := hits[i].kind; k {
+		case hitMenu, hitAppName, hitApps, hitWindow:
+			return k
+		}
+	}
+	return 0
 }
 
 func paintBar(hwnd uintptr) {
