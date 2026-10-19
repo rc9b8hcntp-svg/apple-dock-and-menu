@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Menu Windows</title>
+<title>Lumen</title>
 <meta name="description" content="Un menu système façon menu Apple pour Windows : un bouton en haut à gauche de l’écran pour éteindre, redémarrer, verrouiller et ouvrir les paramètres.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -52,6 +52,10 @@
   .topbar nav a { text-decoration: none; color: var(--muted); }
   .topbar nav a:hover { color: var(--ink); }
   .clock { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .topbar .right { display: flex; align-items: center; gap: 14px; }
+  .acct { font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); background: transparent; border: 1.5px solid var(--ink); border-radius: 999px; padding: 2px 12px; cursor: pointer; }
+  .acct:hover { background: #fff; }
+  @media (max-width: 560px) { .clock { display: none; } }
 
   .bar-btn {
     position: relative;
@@ -246,6 +250,21 @@
   dialog .row2 { display: flex; gap: 10px; justify-content: flex-end; }
   dialog button { font: inherit; font-weight: 600; padding: 9px 18px; border-radius: 8px; border: 1.5px solid var(--ink); background: #fff; cursor: pointer; }
   dialog button.ok { background: var(--ink); color: #fff; }
+  [hidden] { display: none !important; }
+  dialog button:disabled { opacity: .45; cursor: not-allowed; }
+  dialog.wide { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; }
+  dialog .tabs { display: flex; gap: 6px; margin: 0 0 14px; }
+  dialog .tabs button { flex: 1; padding: 7px 10px; border-width: 1px; border-color: var(--line); font-weight: 500; }
+  dialog .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); font-weight: 600; }
+  dialog label.f { display: block; margin: 0 0 12px; font-size: 14px; font-weight: 600; }
+  dialog label.f input { display: block; width: 100%; margin-top: 4px; font: inherit; font-weight: 400; padding: 9px 11px; border: 1.5px solid var(--line); border-radius: 8px; }
+  dialog label.f input:focus { outline: 3px solid var(--cobalt); outline-offset: 1px; border-color: var(--cobalt); }
+  dialog .err { color: var(--danger); font-size: 14px; min-height: 1.2em; margin: 0 0 12px; }
+  dialog .note { font-size: 14px; margin: 0 0 12px; }
+  dialog button.link { border: 0; background: none; padding: 0; font-weight: 500; font-size: 14px; color: var(--cobalt); text-decoration: underline; margin-top: 14px; }
+  dialog .risk { color: var(--ink); font-size: 15px; line-height: 1.55; margin: 0 0 16px; }
+  dialog .agree { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 18px; font-weight: 600; font-size: 15px; }
+  dialog .agree input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
 
   @media (max-width: 860px) {
     .hero { grid-template-columns: minmax(0,1fr); padding-top: 48px; }
@@ -283,7 +302,7 @@
       <a href="#faq">Questions</a>
     </nav>
   </div>
-  <span class="clock" id="clock" aria-hidden="true"></span>
+  <span class="right"><button class="acct" id="acctBtn" type="button">Se connecter</button><span class="clock" id="clock" aria-hidden="true"></span></span>
 </header>
 
 <main>
@@ -320,7 +339,7 @@
       <div class="row" role="row"><b role="cell">Applications</b><span role="cell">Liste vos programmes du menu Démarrer, classés par lettre. Un clic lance le programme. « Toutes les applications… » ouvre aussi celles du Microsoft Store.</span><span role="cell"><code>Start Menu\Programs</code></span></div>
       <div class="row" role="row"><b role="cell">Dock</b><span role="cell">Barre flottante en bas de l’écran : vos applications épinglées, celles qui sont ouvertes (un point dessous) et la Corbeille. Les icônes grossissent sous la souris.</span><span role="cell"><code>UpdateLayeredWindow</code></span></div>
       <div class="row" role="row"><b role="cell">Clic sur une icône du Dock</b><span role="cell">Ouvre l’application, ou ramène sa fenêtre devant. Avec plusieurs fenêtres, chaque clic passe à la suivante.</span><span role="cell"><code>SetForegroundWindow</code></span></div>
-      <div class="row" role="row"><b role="cell">Clic droit sur une icône</b><span role="cell">Afficher, Réduire, Fermer, ou Garder dans le Dock / Retirer du Dock. Sur la Corbeille : l’ouvrir ou la vider.</span><span role="cell"><code>%APPDATA%\MenuWindows\dock.txt</code></span></div>
+      <div class="row" role="row"><b role="cell">Clic droit sur une icône</b><span role="cell">Afficher, Réduire, Fermer, ou Garder dans le Dock / Retirer du Dock. Sur la Corbeille : l’ouvrir ou la vider.</span><span role="cell"><code>%APPDATA%\Lumen\dock.txt</code></span></div>
       <div class="row" role="row"><b role="cell">À propos de ce PC</b><span role="cell">Affiche le nom du PC, le processeur, la mémoire et la version de Windows.</span><span role="cell"><code>ms-settings:about</code></span></div>
       <div class="row" role="row"><b role="cell">Paramètres système…</b><span role="cell">Ouvre les paramètres de Windows.</span><span role="cell"><code>ms-settings:</code></span></div>
       <div class="row" role="row"><b role="cell">Microsoft Store…</b><span role="cell">Ouvre la boutique d’applications.</span><span role="cell"><code>ms-windows-store:</code></span></div>
@@ -331,7 +350,7 @@
       <div class="row" role="row"><b role="cell">Éteindre…</b><span role="cell">Demande confirmation, puis éteint le PC.</span><span role="cell"><code>shutdown /s /t 0</code></span></div>
       <div class="row" role="row"><b role="cell">Verrouiller l’écran</b><span role="cell">Verrouille la session immédiatement.</span><span role="cell"><code>LockWorkStation</code></span></div>
       <div class="row" role="row"><b role="cell">Fermer la session…</b><span role="cell">Demande confirmation, puis ferme votre session.</span><span role="cell"><code>shutdown /l</code></span></div>
-      <div class="row" role="row"><b role="cell">Quitter Menu Windows</b><span role="cell">Ferme le bouton et l’icône. Relancez-le depuis le menu Démarrer.</span><span role="cell"><code>WM_CLOSE</code></span></div>
+      <div class="row" role="row"><b role="cell">Quitter Lumen</b><span role="cell">Ferme le bouton et l’icône. Relancez-le depuis le menu Démarrer.</span><span role="cell"><code>WM_CLOSE</code></span></div>
     </div>
   </section>
 
@@ -345,9 +364,9 @@
     </ol>
 
     <div class="dl-grid" id="dlGrid">
-      <a class="dl-card" data-arch="x64" href="#"><span class="badge">Recommandé pour votre PC</span><b>Windows 64 bits</b><span>Processeur Intel ou AMD (x64). C’est le cas de la plupart des PC.</span><code>MenuWindows-x64.msi</code></a>
-      <a class="dl-card" data-arch="arm64" href="#"><span class="badge">Recommandé pour votre PC</span><b>Windows sur ARM</b><span>Processeur ARM64 : Snapdragon, Surface Pro X, PC Copilot+ à puce ARM.</span><code>MenuWindows-arm64.msi</code></a>
-      <a class="dl-card" data-arch="x86" href="#"><span class="badge">Recommandé pour votre PC</span><b>Windows 32 bits</b><span>Anciens PC et Windows 10 en 32 bits (x86).</span><code>MenuWindows-x86.msi</code></a>
+      <a class="dl-card" data-arch="x64" href="#"><span class="badge">Recommandé pour votre PC</span><b>Windows 64 bits</b><span>Processeur Intel ou AMD (x64). C’est le cas de la plupart des PC.</span><code>Lumen-x64.msi</code></a>
+      <a class="dl-card" data-arch="arm64" href="#"><span class="badge">Recommandé pour votre PC</span><b>Windows sur ARM</b><span>Processeur ARM64 : Snapdragon, Surface Pro X, PC Copilot+ à puce ARM.</span><code>Lumen-arm64.msi</code></a>
+      <a class="dl-card" data-arch="x86" href="#"><span class="badge">Recommandé pour votre PC</span><b>Windows 32 bits</b><span>Anciens PC et Windows 10 en 32 bits (x86).</span><code>Lumen-x86.msi</code></a>
     </div>
     <p class="hint" id="archHint">Pas sûr ? Ouvrez Paramètres, Système, À propos de ce PC, puis regardez la ligne « Type du système ».</p>
   </section>
@@ -356,16 +375,16 @@
     <h2 class="title">Questions fréquentes</h2>
     <p class="sub">Les réponses courtes, avant d’installer.</p>
     <details><summary>Windows affiche « Windows a protégé votre ordinateur ». Que faire ?</summary><p>Le fichier n’est pas signé avec un certificat payant, donc SmartScreen le signale. Cliquez sur « Informations complémentaires », puis sur « Exécuter quand même ». Vous pouvez aussi lire le code source et compiler le MSI vous-même.</p></details>
-    <details><summary>Comment le désinstaller ?</summary><p>Ouvrez Paramètres, puis Applications, puis Applications installées. Cherchez « Menu Windows » et choisissez Désinstaller. Le démarrage automatique est supprimé en même temps.</p></details>
+    <details><summary>Comment le désinstaller ?</summary><p>Ouvrez Paramètres, puis Applications, puis Applications installées. Cherchez « Lumen » et choisissez Désinstaller. Le démarrage automatique est supprimé en même temps.</p></details>
     <details><summary>Le bouton gêne une fenêtre, que faire ?</summary><p>Il est petit et fixé dans le coin. Si vous préférez ne pas le voir, quittez-le avec la dernière entrée du menu, puis relancez-le depuis le menu Démarrer quand vous en avez besoin.</p></details>
     <details><summary>Le programme envoie-t-il des données ?</summary><p>Non. Il n’utilise pas Internet : il appelle uniquement des fonctions de Windows quand vous cliquez sur une entrée.</p></details>
     <details><summary>Peut-on garder la barre des tâches de Windows ?</summary><p>Oui. La barre du haut et le Dock s’ajoutent sans rien remplacer. Le Dock se pose juste au-dessus de la barre de Windows. Pour retrouver un écran comme sur un Mac, masquez la barre de Windows automatiquement : Paramètres, Personnalisation, Barre des tâches, Comportements.</p></details>
-    <details><summary>Comment ajouter ou retirer une application du Dock ?</summary><p>Lancez l’application, faites un clic droit sur son icône dans le Dock, puis choisissez « Garder dans le Dock ». « Retirer du Dock » fait l’inverse. La liste est enregistrée dans le fichier <code>%APPDATA%\MenuWindows\dock.txt</code>.</p></details>
+    <details><summary>Comment ajouter ou retirer une application du Dock ?</summary><p>Lancez l’application, faites un clic droit sur son icône dans le Dock, puis choisissez « Garder dans le Dock ». « Retirer du Dock » fait l’inverse. La liste est enregistrée dans le fichier <code>%APPDATA%\Lumen\dock.txt</code>.</p></details>
     <details><summary>Le Dock se cache-t-il quand je joue ou que je regarde une vidéo en plein écran ?</summary><p>Oui. Il s’efface quand une application passe en plein écran et revient ensuite.</p></details>
     <details><summary>Quelles versions de Windows sont prises en charge ?</summary><p>Windows 10 et Windows 11, en 64 bits (x64), sur ARM (ARM64) et en 32 bits (x86). Il n’existe pas de version pour macOS ni Linux.</p></details>
   </section>
 
-  <footer>Menu Windows est un projet indépendant. Il n’est ni affilié ni approuvé par Apple ou par Microsoft.</footer>
+  <footer>Lumen est un projet indépendant. Il n’est ni affilié ni approuvé par Apple ou par Microsoft.</footer>
 </main>
 
 <div class="dock-wrap"><nav class="dock" id="dock" aria-label="Dock : applications épinglées et ouvertes"></nav></div>
@@ -378,8 +397,38 @@
   <div class="row2"><button id="dlgNo">Annuler</button><button class="ok" id="dlgYes">Continuer</button></div>
 </dialog>
 
+<dialog id="authDlg">
+  <h3 id="authTitle">Connexion</h3>
+  <p id="authIntro">Créez un compte gratuit, ou connectez-vous, pour télécharger Lumen.</p>
+  <div class="tabs" role="tablist"><button type="button" id="tabIn" class="on" role="tab">Connexion</button><button type="button" id="tabUp" role="tab">Créer un compte</button></div>
+  <label class="f">Adresse e-mail<input id="authMail" type="email" autocomplete="email" inputmode="email"></label>
+  <label class="f">Mot de passe<input id="authPass" type="password" autocomplete="current-password"></label>
+  <p class="err" id="authErr" role="alert"></p>
+  <div class="row2"><button type="button" id="authCancel">Annuler</button><button type="button" class="ok" id="authGo">Se connecter</button></div>
+  <button type="button" class="link" id="authReset">Mot de passe oublié ?</button>
+</dialog>
+
+<dialog id="riskDlg" class="wide">
+  <h3>Avant de télécharger : version expérimentale</h3>
+  <p class="risk"><b>Lumen est un projet indépendant et expérimental.</b> Il n’a été essayé que sur un petit nombre de configurations, et certaines fonctions (boutons de fenêtre façon macOS, Dock sur les côtés, barre masquée automatiquement, flou, luminosité, Bluetooth, sélecteur d’applications) peuvent mal se comporter selon votre PC. Il s’installe avec les droits d’administrateur, se lance à chaque ouverture de session, réserve de la place en haut de l’écran, peut masquer la barre des tâches de Windows, installe des raccourcis clavier globaux et dessine des fenêtres par-dessus celles des autres programmes. Il peut donc entrer en conflit avec un antivirus, un jeu ou un outil anti-triche, ralentir l’affichage ou, en cas de plantage, laisser la barre des tâches cachée jusqu’au redémarrage de l’Explorateur Windows ou du PC. Le fichier n’est pas signé : SmartScreen affichera un avertissement. Son menu peut aussi redémarrer, éteindre ou verrouiller l’ordinateur (avec confirmation) : enregistrez votre travail avant de l’essayer. Il est fourni tel quel, sans garantie, et n’est ni affilié ni approuvé par Apple ou par Microsoft. Il est conseillé de créer un point de restauration, de l’essayer d’abord sur un PC dont vous pouvez vous passer et, au besoin, de le désinstaller depuis Paramètres > Applications.</p>
+  <label class="agree"><input type="checkbox" id="riskOk"> <span>J’ai lu ces risques et je veux quand même télécharger Lumen.</span></label>
+  <div class="row2"><button type="button" id="riskNo">Annuler</button><button type="button" class="ok" id="riskGo" disabled>Télécharger</button></div>
+</dialog>
+
 <script>
-  // ► Remplacez par votre compte et le nom de votre dépôt GitHub.
+  // ► Configuration Firebase (Authentification). À remplacer par celle de votre projet :
+  //   console Firebase > Paramètres du projet > Vos applications > Application Web > « Configuration ».
+  //   Si apiKey contient « À_REMPLIR », la connexion est désactivée et les téléchargements restent verrouillés.
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAa6KeCJqSuC6rPwhdhxDUx0i-kpUBZU_U",
+    authDomain: "apple-dock.firebaseapp.com",
+    projectId: "apple-dock",
+    storageBucket: "apple-dock.firebasestorage.app",
+    messagingSenderId: "758294215092",
+    appId: "1:758294215092:web:615fb2e78d91573a5d9ae1"
+  };
+
+  // Dépôt GitHub des téléchargements.
   var REPO = "rc9b8hcntp-svg/apple-dock-and-menu";
 
   var MAIN = [
@@ -390,7 +439,7 @@
     { sep: true },
     { id: "recent",   label: "Éléments récents",    log: "shell:recent → fichiers récents" },
     { sep: true },
-    { id: "force",    label: "Forcer à quitter…",   kbd: "Ctrl+Maj+Échap", log: "taskmgr.exe → Gestionnaire des tâches" },
+    { id: "force",    label: "Forcer à quitter…",   kbd: "Ctrl+Alt+Échap", log: "Fenêtre « Forcer à quitter les applications » → liste des applications ouvertes" },
     { sep: true },
     { id: "sleep",    label: "Mettre en veille",    log: "SetSuspendState(0, 0, 0) → veille immédiate" },
     { id: "restart",  label: "Redémarrer…", confirm: "Voulez-vous vraiment redémarrer votre PC ?", log: "shutdown /r /t 0 → redémarrage" },
@@ -399,7 +448,7 @@
     { id: "lock",     label: "Verrouiller l’écran", kbd: "Win+L", log: "LockWorkStation() → session verrouillée" },
     { id: "logoff",   label: "Fermer la session…", confirm: "Voulez-vous vraiment fermer votre session ?", log: "shutdown /l → fermeture de session" },
     { sep: true },
-    { id: "quit",     label: "Quitter Menu Windows", log: "Le programme se ferme → relancez-le depuis le menu Démarrer" }
+    { id: "quit",     label: "Quitter Lumen", log: "Le programme se ferme → relancez-le depuis le menu Démarrer" }
   ];
 
   // Exemple de programmes, regroupés par lettre comme dans l’application.
@@ -422,7 +471,7 @@
   dlBtn.href = base + "/releases/latest";
   var ARCH_NAMES = { x64: "Windows 64 bits", arm64: "Windows ARM", x86: "Windows 32 bits" };
   Array.prototype.forEach.call(document.querySelectorAll("#dlGrid .dl-card"), function (a) {
-    a.href = base + "/releases/latest/download/MenuWindows-" + a.dataset.arch + ".msi";
+    a.href = base + "/releases/latest/download/Lumen-" + a.dataset.arch + ".msi";
   });
 
   // Repère le type de PC pour recommander le bon fichier.
@@ -437,7 +486,7 @@
   function guessFromUA() {
     var ua = navigator.userAgent || "";
     if (!/Windows/i.test(ua)) {
-      document.getElementById("archHint").textContent = "Menu Windows fonctionne uniquement sous Windows. Ouvrez cette page depuis votre PC Windows pour voir le bon fichier.";
+      document.getElementById("archHint").textContent = "Lumen fonctionne uniquement sous Windows. Ouvrez cette page depuis votre PC Windows pour voir le bon fichier.";
       return null;
     }
     if (/ARM64|aarch64/i.test(ua)) return "arm64";
@@ -458,6 +507,16 @@
   } catch (e) { recommend(guessFromUA()); }
   document.getElementById("src").href = base;
 
+  // Téléchargements : il faut être connecté, puis lire les risques. Sans connexion disponible, rien ne part.
+  function gate(e) {
+    e.preventDefault();
+    var url = e.currentTarget.href;
+    if (window.LumenGate) window.LumenGate(url);
+    else say("La connexion se charge… réessayez dans un instant.");
+  }
+  dlBtn.addEventListener("click", gate);
+  Array.prototype.forEach.call(document.querySelectorAll("#dlGrid .dl-card"), function (a) { a.addEventListener("click", gate); });
+
   function say(text) {
     logEl.textContent = "> " + text;
     var part = text.split(" → ")[1];
@@ -470,7 +529,7 @@
   function runItem(it) {
     if (it.confirm) {
       pending = it;
-      document.getElementById("dlgTitle").textContent = "Menu Windows";
+      document.getElementById("dlgTitle").textContent = "Lumen";
       document.getElementById("dlgText").textContent = it.confirm;
       dlg.showModal();
     } else {
@@ -650,6 +709,125 @@
     document.querySelector(".db-clock").textContent = txt;
   }
   tick(); setInterval(tick, 20000);
+</script>
+
+<script type="module">
+  // Compte (Firebase Authentication) : e-mail et mot de passe.
+  const $ = (id) => document.getElementById(id);
+  const cfg = window.FIREBASE_CONFIG || {};
+  const configured = !!cfg.apiKey && !/REMPLIR/i.test(cfg.apiKey) && !/REMPLIR/i.test(cfg.projectId || "");
+  const A = { user: null, mode: "in", after: null };
+  const authDlg = $("authDlg"), riskDlg = $("riskDlg"), acct = $("acctBtn");
+  let fb = null;
+
+  const MSG = {
+    "auth/invalid-email": "Cette adresse e-mail n’est pas valide.",
+    "auth/missing-password": "Entrez un mot de passe.",
+    "auth/weak-password": "Mot de passe trop court : au moins 6 caractères.",
+    "auth/email-already-in-use": "Un compte existe déjà avec cette adresse. Choisissez « Connexion ».",
+    "auth/invalid-credential": "Adresse e-mail ou mot de passe incorrect.",
+    "auth/wrong-password": "Adresse e-mail ou mot de passe incorrect.",
+    "auth/user-not-found": "Adresse e-mail ou mot de passe incorrect.",
+    "auth/too-many-requests": "Trop d’essais. Patientez quelques minutes puis réessayez.",
+    "auth/network-request-failed": "Pas de connexion à Internet.",
+    "auth/operation-not-allowed": "La connexion par e-mail n’est pas activée dans Firebase.",
+    "auth/unauthorized-domain": "Ce site n’est pas dans les domaines autorisés de Firebase."
+  };
+  const say = (t) => { const el = $("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(say.t); say.t = setTimeout(() => el.classList.remove("show"), 3200); };
+  const err = (e) => { $("authErr").textContent = (e && MSG[e.code]) || "Une erreur s’est produite. Réessayez."; };
+
+  function render() {
+    acct.textContent = A.user ? "Se déconnecter" : "Se connecter";
+    acct.title = A.user ? A.user.email : "";
+    const up = A.mode === "up";
+    $("tabIn").classList.toggle("on", !up); $("tabUp").classList.toggle("on", up);
+    $("authTitle").textContent = up ? "Créer un compte" : "Connexion";
+    $("authGo").textContent = up ? "Créer mon compte" : "Se connecter";
+    $("authPass").autocomplete = up ? "new-password" : "current-password";
+    $("authReset").hidden = up;
+  }
+  function openAuth(mode, after) {
+    A.mode = mode || "in"; A.after = after || null;
+    $("authErr").textContent = "";
+    if (!configured || !fb) {
+      $("authIntro").textContent = "La connexion n’est pas encore configurée sur ce site : le téléchargement est momentanément indisponible.";
+      for (const id of ["tabIn", "tabUp", "authMail", "authPass", "authGo", "authReset"]) $(id).hidden = true;
+    } else {
+      $("authIntro").textContent = "Créez un compte gratuit, ou connectez-vous, pour télécharger Lumen.";
+      for (const id of ["tabIn", "tabUp", "authMail", "authPass", "authGo", "authReset"]) $(id).hidden = false;
+      for (const l of authDlg.querySelectorAll("label.f")) l.hidden = false;
+      render();
+    }
+    if (!configured || !fb) for (const l of authDlg.querySelectorAll("label.f")) l.hidden = true;
+    authDlg.showModal();
+    if (configured && fb) $("authMail").focus();
+  }
+  function openRisk(url) {
+    $("riskOk").checked = false; $("riskGo").disabled = true;
+    riskDlg.dataset.url = url;
+    riskDlg.showModal();
+  }
+  // Appelé par les boutons « Télécharger » de la page.
+  window.LumenGate = (url) => { if (A.user) openRisk(url); else openAuth("in", () => openRisk(url)); };
+
+  acct.addEventListener("click", async () => {
+    if (A.user && fb) { await fb.signOut(fb.auth); say("Vous êtes déconnecté."); }
+    else openAuth("in", null);
+  });
+  $("tabIn").onclick = () => { A.mode = "in"; $("authErr").textContent = ""; render(); };
+  $("tabUp").onclick = () => { A.mode = "up"; $("authErr").textContent = ""; render(); };
+  $("authCancel").onclick = () => authDlg.close();
+  $("riskNo").onclick = () => riskDlg.close();
+  $("riskOk").onchange = (e) => { $("riskGo").disabled = !e.target.checked; };
+  $("riskGo").onclick = () => {
+    if (!$("riskOk").checked || !A.user) return;
+    const url = riskDlg.dataset.url;
+    riskDlg.close();
+    say("Téléchargement lancé.");
+    window.location.href = url;
+  };
+  $("authGo").onclick = async () => {
+    if (!fb) return;
+    const mail = $("authMail").value.trim(), pass = $("authPass").value;
+    $("authErr").textContent = "";
+    if (!mail || !pass) { $("authErr").textContent = "Entrez votre adresse e-mail et un mot de passe."; return; }
+    $("authGo").disabled = true;
+    try {
+      if (A.mode === "up") await fb.createUser(fb.auth, mail, pass);
+      else await fb.signIn(fb.auth, mail, pass);
+      $("authPass").value = "";
+      authDlg.close();
+      const next = A.after; A.after = null;
+      if (next) next(); else say("Vous êtes connecté.");
+    } catch (e) { err(e); }
+    $("authGo").disabled = false;
+  };
+  $("authPass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("authGo").click(); });
+  $("authReset").onclick = async () => {
+    const mail = $("authMail").value.trim();
+    if (!mail) { $("authErr").textContent = "Entrez d’abord votre adresse e-mail ci-dessus."; return; }
+    try { await fb.reset(fb.auth, mail); $("authErr").textContent = ""; say("E-mail de réinitialisation envoyé (pensez aux courriers indésirables)."); }
+    catch (e) { err(e); }
+  };
+
+  if (configured) {
+    try {
+      const V = "10.12.2";
+      const [appM, authM] = await Promise.all([
+        import("https://www.gstatic.com/firebasejs/" + V + "/firebase-app.js"),
+        import("https://www.gstatic.com/firebasejs/" + V + "/firebase-auth.js")
+      ]);
+      const app = appM.initializeApp(cfg), auth = authM.getAuth(app);
+      auth.languageCode = "fr";
+      fb = {
+        auth,
+        signIn: authM.signInWithEmailAndPassword, createUser: authM.createUserWithEmailAndPassword,
+        signOut: authM.signOut, reset: authM.sendPasswordResetEmail
+      };
+      authM.onAuthStateChanged(auth, (u) => { A.user = u; render(); });
+    } catch (e) { fb = null; }
+  }
+  render();
 </script>
 </body>
 </html>

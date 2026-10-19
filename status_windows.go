@@ -66,6 +66,9 @@ func updateStatus() bool {
 			wifiState, changed = w, true
 		}
 	}
+	if statusTick%120 == 119 { // Bluetooth : relu chaque minute, en arrière-plan
+		btRefresh()
+	}
 	statusTick++
 	return changed
 }
@@ -137,21 +140,31 @@ func sendWinKey(vk byte) {
 	pKeybdEvent.Call(vkLWin, 0, keyUp, 0)
 }
 
-func barAction(kind int) {
-	switch kind {
-	case hitBattery:
-		openURI("ms-settings:batterysaver")
-	case hitWifi:
-		openURI("ms-settings:network-wifi")
-	case hitSound:
-		openURI("ms-settings:sound")
-	case hitSearch:
-		sendWinKey('S')
-	case hitControl:
-		sendWinKey('A')
-	case hitClock:
-		sendWinKey('N')
+// sendWinShiftKey simule Win+Maj+<touche> (Win+Maj+S : capture d'écran).
+func sendWinShiftKey(vk byte) {
+	const vkLWin, vkShift, keyUp = 0x5B, 0x10, 2
+	pKeybdEvent.Call(vkLWin, 0, 0, 0)
+	pKeybdEvent.Call(vkShift, 0, 0, 0)
+	pKeybdEvent.Call(uintptr(vk), 0, 0, 0)
+	pKeybdEvent.Call(uintptr(vk), 0, keyUp, 0)
+	pKeybdEvent.Call(vkShift, 0, keyUp, 0)
+	pKeybdEvent.Call(vkLWin, 0, keyUp, 0)
+}
+
+// Ne pas déranger : coupe les notifications (bannières) de Windows.
+const dndKey = `Software\Microsoft\Windows\CurrentVersion\PushNotifications`
+
+func dndOn() bool {
+	v, ok := regDword(dndKey, "ToastEnabled")
+	return ok && v == 0
+}
+
+func setDND(on bool) {
+	v := []byte{1, 0, 0, 0}
+	if on {
+		v = []byte{0, 0, 0, 0}
 	}
+	regSet(dndKey, "ToastEnabled", 4 /*REG_DWORD*/, v)
 }
 
 // ---------------------------------------------------------------------------

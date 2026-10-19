@@ -4,7 +4,7 @@
   <?define Version = "1.0.0"?>
   <?endif?>
 
-  <Package Name="Menu Windows"
+  <Package Name="Lumen"
            Manufacturer="Maxence"
            Version="$(Version)"
            UpgradeCode="6B1E2C9A-4D3F-4F7B-9A52-8C0E5D7A1F34"
@@ -12,26 +12,29 @@
            Compressed="yes"
            Language="1036">
 
-    <SummaryInformation Description="Menu Windows - un menu système façon menu Apple pour Windows" />
+    <SummaryInformation Description="Lumen - un menu système et un Dock façon macOS pour Windows" />
 
-    <MajorUpgrade DowngradeErrorMessage="Une version plus récente de Menu Windows est déjà installée." />
+    <Icon Id="AppIcon" SourceFile="..\assets\lumen.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+
+    <MajorUpgrade DowngradeErrorMessage="Une version plus récente de Lumen est déjà installée." />
     <MediaTemplate EmbedCab="yes" />
 
     <!-- Fichiers -->
     <!-- ProgramFiles6432Folder : « Program Files » en 64 bits, « Program Files (x86) » en 32 bits -->
     <StandardDirectory Id="ProgramFiles6432Folder">
-      <Directory Id="INSTALLFOLDER" Name="Menu Windows">
+      <Directory Id="INSTALLFOLDER" Name="Lumen">
         <Component Id="MainExecutable" Guid="*">
-          <File Id="MenuWinExe" Source="menuwin.exe" KeyPath="yes" />
+          <File Id="LumenExe" Source="lumen.exe" KeyPath="yes" />
         </Component>
 
         <!-- Lancement automatique à l'ouverture de session Windows -->
         <Component Id="AutoStart" Guid="*">
           <RegistryValue Root="HKLM"
                          Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-                         Name="MenuWindows"
+                         Name="Lumen"
                          Type="string"
-                         Value="&quot;[INSTALLFOLDER]menuwin.exe&quot;"
+                         Value="&quot;[INSTALLFOLDER]lumen.exe&quot;"
                          KeyPath="yes" />
         </Component>
       </Directory>
@@ -41,12 +44,12 @@
     <StandardDirectory Id="ProgramMenuFolder">
       <Component Id="StartMenuShortcut" Guid="*">
         <Shortcut Id="StartMenuLink"
-                  Name="Menu Windows"
-                  Description="Menu système façon menu Apple"
-                  Target="[INSTALLFOLDER]menuwin.exe"
+                  Name="Lumen"
+                  Description="Menu système et Dock façon macOS"
+                  Target="[INSTALLFOLDER]lumen.exe"
                   WorkingDirectory="INSTALLFOLDER" />
         <RegistryValue Root="HKCU"
-                       Key="Software\MenuWindows"
+                       Key="Software\Lumen"
                        Name="StartMenuShortcut"
                        Type="integer"
                        Value="1"
@@ -54,7 +57,7 @@
       </Component>
     </StandardDirectory>
 
-    <Feature Id="Main" Title="Menu Windows" Level="1">
+    <Feature Id="Main" Title="Lumen" Level="1">
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="AutoStart" />
       <ComponentRef Id="StartMenuShortcut" />
@@ -62,21 +65,27 @@
 
     <!-- Ferme l'application avant une mise à jour ou une désinstallation
          (sinon l'exécutable serait verrouillé). Erreurs ignorées. -->
-    <CustomAction Id="StopApp"
+    <CustomAction Id="StopOld"
                   Directory="TARGETDIR"
                   ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /IM menuwin.exe"
+                  Execute="immediate"
+                  Return="ignore" />
+    <CustomAction Id="StopApp"
+                  Directory="TARGETDIR"
+                  ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /IM lumen.exe"
                   Execute="immediate"
                   Return="ignore" />
 
     <!-- Lance l'application à la fin de l'installation. -->
     <CustomAction Id="StartApp"
                   Directory="INSTALLFOLDER"
-                  ExeCommand="&quot;[INSTALLFOLDER]menuwin.exe&quot;"
+                  ExeCommand="&quot;[INSTALLFOLDER]lumen.exe&quot;"
                   Execute="immediate"
                   Impersonate="yes"
                   Return="asyncNoWait" />
 
     <InstallExecuteSequence>
+      <Custom Action="StopOld" Before="InstallValidate" />
       <Custom Action="StopApp" Before="InstallValidate" />
       <Custom Action="StartApp" After="InstallFinalize" Condition="NOT REMOVE" />
     </InstallExecuteSequence>

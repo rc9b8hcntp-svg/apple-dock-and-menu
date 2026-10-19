@@ -10,6 +10,7 @@ package main
 // alignés à droite, défilement des longues listes, clavier complet).
 
 import (
+	"strconv"
 	"strings"
 	"syscall"
 	"unicode"
@@ -28,6 +29,21 @@ type mItem struct {
 	sep      bool
 	disabled bool
 	sub      []mItem
+
+	// Entrées « vivantes », utilisées par les menus des icônes de la barre.
+	act       func() // exécuté à l'activation (une fois le menu fermé, sauf si stay)
+	stay      bool   // le menu reste ouvert après l'activation (cases à cocher, choix)
+	checkable bool   // une colonne de coches est réservée à gauche
+	check     bool   // la coche est affichée
+	field     bool   // champ de recherche (non sélectionnable), son texte est celui du menu
+	header    bool   // titre de section : petit texte gras grisé, non sélectionnable
+	sw        bool   // interrupteur à droite (état dans check)
+	bold      bool   // texte en gras
+	slider    bool
+	value     func() int // curseur : valeur courante, entre lo et hi
+	setValue  func(int)
+	lo, hi    int
+	unit      string
 }
 
 // mi crée une entrée. Un éventuel "\t" sépare le texte du raccourci.
@@ -43,7 +59,34 @@ func msep() mItem { return mItem{sep: true} }
 
 func msub(label string, sub []mItem) mItem { return mItem{text: label, sub: sub} }
 
-func (it mItem) selectable() bool { return !it.sep && !it.disabled }
+func (it mItem) selectable() bool { return !it.sep && !it.disabled && !it.field }
+
+// mact : une entrée qui exécute une action une fois le menu fermé.
+func mact(label string, act func()) mItem { return mItem{text: label, act: act} }
+
+// mcheck : une case à cocher ; le menu reste ouvert pour voir le résultat.
+func mcheck(label string, on bool, act func()) mItem {
+	return mItem{text: label, checkable: true, check: on, stay: true, act: act}
+}
+
+// minfo : une ligne d'information grisée.
+func minfo(label string) mItem { return mItem{text: label, disabled: true} }
+
+// mslider : un curseur horizontal (valeur entre lo et hi).
+func mslider(label string, lo, hi int, unit string, get func() int, set func(int)) mItem {
+	return mItem{text: label, slider: true, lo: lo, hi: hi, unit: unit, value: get, setValue: set}
+}
+
+// mheader : un titre de section (« Réseaux préférés »).
+func mheader(label string) mItem { return mItem{text: label, header: true, disabled: true} }
+
+// mswitch : une ligne en gras avec un interrupteur à droite, comme « Wi-Fi » sur macOS.
+func mswitch(label string, on bool, act func()) mItem {
+	return mItem{text: label, sw: true, check: on, bold: true, stay: true, act: act}
+}
+
+// mfield : le champ de recherche en haut du menu.
+func mfield() mItem { return mItem{field: true} }
 
 // ---------------------------------------------------------------------------
 // Ressources et état global
@@ -71,7 +114,7 @@ var (
 
 func makeFont(px int32, weight int) uintptr {
 	f, _, _ := pCreateFont.Call(uintptr(-px), 0, 0, 0, uintptr(weight), 0, 0, 0,
-		1 /*DEFAULT_CHARSET*/, 0, 0, 5 /*CLEARTYPE*/, 0, ptr(utf16("Segoe UI")))
+		1 /*DEFAULT_CHARSET*/, 0, 0, 5 /*CLEARTYPE*/, 0, ptr(utf16(uiFace())))
 	return f
 }
 
@@ -200,15 +243,27 @@ type mLevel struct {
 	parentIdx  int
 	depth      int
 	smooth     bool
+
+	checkW  int32 // largeur de la colonne des coches (0 si aucune entrée à cocher)
+	minW    int32 // largeur minimale (garde la largeur stable quand le menu se met à jour)
+	maxH    int32 // hauteur maximale disponible
+	rebuild func(query string) []mItem
+	search  bool // les lettres tapées alimentent le champ de recherche
+	query   string
 }
 
 var (
-	mStack  []*mLevel
-	mResult int
-	mDone   bool
-	mLost   bool // le menu s'est fermé parce qu'une autre fenêtre a pris le focus
-	mSwitch int  // titre de la barre vers lequel on a glissé : son menu doit s'ouvrir ensuite
+	mStack   []*mLevel
+	mResult  int
+	mDone    bool
+	mLost    bool    // le menu s'est fermé parce qu'une autre fenêtre a pris le focus
+	mSwitch  int     // titre de la barre vers lequel on a glissé : son menu doit s'ouvrir ensuite
+	mAfter   func()  // action à lancer une fois le menu fermé
+	mDragL   *mLevel // niveau dont un curseur est en train d'être déplacé
+	mDragIdx int
 )
+
+const swpNoZOrder = 0x0004
 
 func padOuter() int32 { return sc(6) }
 func rowH() int32     { return sc(26) }
@@ -221,11 +276,18 @@ func measureLevel(L *mLevel) {
 	var maxText, maxKey int32
 	anySub := false
 	for _, it := range L.items {
-		if it.sep {
+		if it.sep || it.field {
 			continue
 		}
-		if w := textWidth(dc, it.text); w > maxText {
-			maxText = w
+		tw := textWidth(dc, it.text)
+		if it.bold || it.header {
+			tw += sc(8)
+		}
+		if it.sw {
+			tw += sc(46)
+		}
+		if tw > maxText {
+			maxText = tw
 		}
 		if w := textWidth(dc, it.key); w > maxKey {
 			maxKey = w
@@ -237,8 +299,13 @@ func measureLevel(L *mLevel) {
 	pSelectObject.Call(dc, old)
 	pReleaseDC.Call(0, dc)
 
-	L.keyW, L.subW = 0, 0
-	w := sc(12) + maxText + sc(14)
+	L.keyW, L.subW, L.checkW = 0, 0, 0
+	for _, it := range L.items {
+		if it.checkable {
+			L.checkW = sc(18)
+		}
+	}
+	w := sc(12) + L.checkW + maxText + sc(14)
 	if maxKey > 0 {
 		L.keyW = maxKey
 		w += sc(28) + maxKey
@@ -251,14 +318,24 @@ func measureLevel(L *mLevel) {
 	if min := sc(190); w < min {
 		w = min
 	}
+	if w < L.minW {
+		w = L.minW
+	}
 	L.w = w
 
 	L.rects = L.rects[:0]
 	var y int32
 	for _, it := range L.items {
 		h := rowH()
-		if it.sep {
+		switch {
+		case it.sep:
 			h = sepH()
+		case it.header:
+			h = sc(24)
+		case it.slider:
+			h = sc(48)
+		case it.field:
+			h = sc(38)
 		}
 		L.rects = append(L.rects, rect{padOuter(), y, w - padOuter(), y + h})
 		y += h
@@ -268,6 +345,7 @@ func measureLevel(L *mLevel) {
 
 // fitHeight fixe la hauteur de la fenêtre ; au-delà de maxH la liste défile.
 func fitHeight(L *mLevel, maxH int32) {
+	L.maxH = maxH
 	full := L.contentH + 2*padOuter()
 	if full <= maxH {
 		L.h, L.top, L.scrolls, L.scroll = full, padOuter(), false, 0
@@ -466,7 +544,22 @@ func drawLevel(hdc uintptr, L *mLevel) {
 			pFillRect.Call(hdc, uintptr(unsafe.Pointer(&line)), brushSep)
 			continue
 		}
+		if it.field {
+			drawSearchField(hdc, r, L.query)
+			continue
+		}
 		selected := i == L.sel && !it.disabled
+		if it.slider {
+			drawSliderRow(hdc, r, it, selected)
+			continue
+		}
+		if it.header {
+			pSelectObject.Call(hdc, fontBold)
+			pSetTextColor.Call(hdc, pal.menuKey)
+			drawText(hdc, it.text, rect{r.Left + sc(12), r.Top + sc(3), r.Right - sc(12), r.Bottom}, dtLeft|dtEllipsis)
+			pSelectObject.Call(hdc, fontReg)
+			continue
+		}
 		if selected {
 			fillRR(hdc, r, sc(9), pal.accent)
 		}
@@ -483,11 +576,24 @@ func drawLevel(hdc uintptr, L *mLevel) {
 			drawText(hdc, it.key, rect{r.Left, r.Top, right, r.Bottom}, dtRight)
 		}
 		textRight := r.Right - sc(12) - L.subW
+		if it.sw {
+			textRight -= sc(46)
+		}
 		if L.keyW > 0 {
 			textRight -= L.keyW + sc(28)
 		}
+		if it.checkable && it.check {
+			drawIconGlyph(hdc, "\uE73E", rect{r.Left + sc(2), r.Top, r.Left + sc(24), r.Bottom}, textCol)
+		}
 		pSetTextColor.Call(hdc, textCol)
-		drawText(hdc, it.text, rect{r.Left + sc(12), r.Top, textRight, r.Bottom}, dtLeft|dtEllipsis)
+		if it.bold {
+			pSelectObject.Call(hdc, fontBold)
+		}
+		drawText(hdc, it.text, rect{r.Left + sc(12) + L.checkW, r.Top, textRight, r.Bottom}, dtLeft|dtEllipsis)
+		pSelectObject.Call(hdc, fontReg)
+		if it.sw {
+			drawSwitch(hdc, rect{r.Right - sc(12) - sc(34), r.Top + (r.Bottom-r.Top-sc(20))/2, r.Right - sc(12), r.Top + (r.Bottom-r.Top-sc(20))/2 + sc(20)}, it.check, selected)
+		}
 
 		if it.sub != nil {
 			pen := penChev
@@ -517,6 +623,91 @@ func drawLevel(hdc uintptr, L *mLevel) {
 		pSelectObject.Call(hdc, nb)
 		pRoundRect.Call(hdc, 0, 0, uintptr(L.w), uintptr(L.h), uintptr(sc(14)), uintptr(sc(14)))
 	}
+}
+
+// drawSwitch dessine un interrupteur (piste arrondie et bouton rond).
+func drawSwitch(hdc uintptr, r rect, on, selected bool) {
+	track := blendColor(pal.menuBg, pal.menuText, 0.30)
+	knob := rgb(255, 255, 255)
+	switch {
+	case on && selected:
+		track, knob = rgb(255, 255, 255), pal.accent
+	case on:
+		track = pal.accent
+	case selected:
+		track = rgb(120, 170, 255)
+	}
+	fillRR(hdc, r, r.Bottom-r.Top, track)
+	d := r.Bottom - r.Top - sc(4)
+	x := r.Left + sc(2)
+	if on {
+		x = r.Right - sc(2) - d
+	}
+	fillEllipse(hdc, rect{x, r.Top + sc(2), x + d, r.Top + sc(2) + d}, knob)
+}
+
+// drawSearchField dessine le champ de recherche d'un menu (loupe, texte, curseur).
+func drawSearchField(hdc uintptr, r rect, query string) {
+	box := rect{r.Left + sc(4), r.Top + sc(4), r.Right - sc(4), r.Bottom - sc(4)}
+	fillRR(hdc, box, sc(10), blendColor(pal.menuBg, pal.menuText, 0.10))
+	drawIconGlyph(hdc, "\uE721", rect{box.Left + sc(4), box.Top, box.Left + sc(28), box.Bottom}, pal.menuKey)
+	pSelectObject.Call(hdc, fontReg)
+	tx := box.Left + sc(32)
+	area := rect{tx, box.Top, box.Right - sc(10), box.Bottom}
+	caret := tx
+	if query == "" {
+		pSetTextColor.Call(hdc, pal.menuKey)
+		drawText(hdc, tr("Rechercher une application", "Search for an app"), area, dtLeft|dtEllipsis)
+	} else {
+		pSetTextColor.Call(hdc, pal.menuText)
+		drawText(hdc, query, area, dtLeft|dtEllipsis)
+		caret = tx + textWidth(hdc, query) + sc(1)
+		if caret > area.Right {
+			caret = area.Right
+		}
+	}
+	bar := rect{caret, box.Top + sc(7), caret + sc(1) + 1, box.Bottom - sc(7)}
+	fillColor(hdc, bar, pal.menuText)
+}
+
+// sliderSpan donne le début et la fin de la rainure d'un curseur, en coordonnées écran.
+func sliderSpan(L *mLevel) (int32, int32) {
+	return L.x + padOuter() + sc(12), L.x + L.w - padOuter() - sc(12)
+}
+
+// drawSliderRow dessine une ligne « libellé, valeur, rainure et bouton ».
+func drawSliderRow(hdc uintptr, r rect, it mItem, selected bool) {
+	if selected {
+		fillRR(hdc, r, sc(9), blendColor(pal.menuBg, pal.menuText, 0.08))
+	}
+	v := it.value()
+	if v < it.lo {
+		v = it.lo
+	}
+	if v > it.hi {
+		v = it.hi
+	}
+	pSelectObject.Call(hdc, fontReg)
+	pSetTextColor.Call(hdc, pal.menuText)
+	drawText(hdc, it.text, rect{r.Left + sc(12), r.Top + sc(3), r.Right - sc(70), r.Top + sc(27)}, dtLeft|dtEllipsis)
+	pSetTextColor.Call(hdc, pal.menuKey)
+	drawText(hdc, strconv.Itoa(v)+it.unit, rect{r.Left, r.Top + sc(3), r.Right - sc(12), r.Top + sc(27)}, dtRight)
+
+	x0, x1 := r.Left+sc(12), r.Right-sc(12)
+	cy := r.Bottom - sc(14)
+	fillRR(hdc, rect{x0, cy - sc(3), x1, cy + sc(3)}, sc(6), blendColor(pal.menuBg, pal.menuText, 0.22))
+	span := it.hi - it.lo
+	if span <= 0 {
+		span = 1
+	}
+	kx := x0 + int32(float64(v-it.lo)/float64(span)*float64(x1-x0))
+	if kx > x0 {
+		fillRR(hdc, rect{x0, cy - sc(3), kx, cy + sc(3)}, sc(6), pal.accent)
+	}
+	k := sc(14)
+	ring := rect{kx - k/2 - 1, cy - k/2 - 1, kx - k/2 + k + 1, cy - k/2 + k + 1}
+	fillEllipse(hdc, ring, blendColor(pal.menuBg, pal.menuText, 0.35))
+	fillEllipse(hdc, rect{kx - k/2, cy - k/2, kx - k/2 + k, cy - k/2 + k}, rgb(255, 255, 255))
 }
 
 // paintBuffered dessine dans un tampon puis recopie à l'écran (pas de scintillement).
@@ -579,12 +770,96 @@ func activate(L *mLevel, idx int) {
 		}
 		return
 	}
+	if it.slider {
+		return // se règle à la souris (ou avec ← →)
+	}
+	if it.act != nil {
+		if it.stay {
+			it.act()
+			reloadMenus()
+			return
+		}
+		mAfter = it.act
+		mDone = true
+		return
+	}
 	mResult = it.id
 	mDone = true
 }
 
+// slideTo règle un curseur d'après la position horizontale de la souris.
+func slideTo(L *mLevel, idx int, x int32) {
+	it := L.items[idx]
+	x0, x1 := sliderSpan(L)
+	if x1 <= x0 || it.setValue == nil {
+		return
+	}
+	f := float64(x-x0) / float64(x1-x0)
+	if f < 0 {
+		f = 0
+	}
+	if f > 1 {
+		f = 1
+	}
+	v := it.lo + int(f*float64(it.hi-it.lo)+0.5)
+	if it.value() != v {
+		it.setValue(v)
+	}
+	invalidateLevel(L)
+}
+
+// relayout recalcule la taille d'un niveau dont le contenu a changé, sans le déplacer.
+func relayout(L, parent *mLevel) {
+	if L.sel >= len(L.items) || (L.sel >= 0 && !L.items[L.sel].selectable()) {
+		L.sel = -1
+	}
+	L.minW = L.w // la largeur ne rétrécit pas : le menu ne « saute » pas
+	measureLevel(L)
+	if parent == nil {
+		fitHeight(L, L.maxH)
+	} else {
+		placeSub(L, parent, L.parentIdx)
+	}
+	pSetWindowPos.Call(L.hwnd, 0, uintptr(L.x), uintptr(L.y), uintptr(L.w), uintptr(L.h), swpNoZOrder|swpNoActivate)
+	L.smooth = styleWindow(L.hwnd, L.w, L.h)
+	invalidateLevel(L)
+}
+
+// reloadMenus redemande le contenu du menu (coches, valeurs, résultats de recherche)
+// et met à jour tous les niveaux ouverts.
+func reloadMenus() {
+	if len(mStack) == 0 {
+		return
+	}
+	root := mStack[0]
+	if root.rebuild == nil {
+		for _, L := range mStack {
+			invalidateLevel(L)
+		}
+		return
+	}
+	root.items = root.rebuild(root.query)
+	relayout(root, nil)
+	for i := 1; i < len(mStack); i++ {
+		par, L := mStack[i-1], mStack[i]
+		if L.parentIdx < 0 || L.parentIdx >= len(par.items) || len(par.items[L.parentIdx].sub) == 0 {
+			closeFrom(i)
+			break
+		}
+		L.items = par.items[L.parentIdx].sub
+		relayout(L, par)
+	}
+}
+
 func menuHover() {
 	p := cursorPt()
+	if mDragL != nil {
+		if l, _, _ := pGetAsyncKeyState.Call(0x01); l&0x8000 != 0 {
+			slideTo(mDragL, mDragIdx, p.X)
+			return
+		}
+		mDragL = nil
+	}
 	// Menu ouvert depuis la barre : en glissant sur un autre titre, on passe à son menu (comme sur macOS).
 	if pressed != 0 {
 		if k := barMenuKindAt(p); k != 0 && k != pressed {
@@ -623,6 +898,16 @@ func menuHover() {
 
 func menuPress() {
 	p := cursorPt()
+	if li := levelAt(p); li >= 0 {
+		L := mStack[li]
+		if idx := L.itemAt(p); idx >= 0 && L.items[idx].slider && L.items[idx].selectable() {
+			if l, _, _ := pGetAsyncKeyState.Call(0x01); l&0x8000 != 0 {
+				mDragL, mDragIdx = L, idx
+				slideTo(L, idx, p.X)
+			}
+			return
+		}
+	}
 	if levelAt(p) < 0 {
 		// Clic en dehors : on ferme sans transmettre le clic.
 		if inBar(p) || inDock(p) {
@@ -633,6 +918,11 @@ func menuPress() {
 }
 
 func menuRelease() {
+	if mDragL != nil {
+		mDragL = nil
+		reloadMenus()
+		return
+	}
 	p := cursorPt()
 	li := levelAt(p)
 	if li < 0 {
@@ -724,6 +1014,28 @@ func moveSel(L *mLevel, dir int) {
 
 func menuKey(vk uintptr) {
 	d := mStack[len(mStack)-1]
+	if (vk == vkLeft || vk == vkRight) && d.sel >= 0 && d.items[d.sel].slider {
+		it := d.items[d.sel]
+		step := (it.hi - it.lo) / 20
+		if step < 1 {
+			step = 1
+		}
+		v := it.value()
+		if vk == vkLeft {
+			v -= step
+		} else {
+			v += step
+		}
+		if v < it.lo {
+			v = it.lo
+		}
+		if v > it.hi {
+			v = it.hi
+		}
+		it.setValue(v)
+		invalidateLevel(d)
+		return
+	}
 	switch vk {
 	case vkEscape:
 		if len(mStack) > 1 {
@@ -754,12 +1066,36 @@ func menuKey(vk uintptr) {
 			closeFrom(len(mStack) - 1)
 		}
 	case vkReturn, vkSpace:
+		if vk == vkSpace && mStack[0].search {
+			break // l'espace se tape dans le champ de recherche
+		}
 		activate(d, d.sel)
 	}
 }
 
 // menuChar : taper une lettre saute à la prochaine entrée qui commence par elle.
 func menuChar(ch rune) {
+	if root := mStack[0]; root.search && root.rebuild != nil {
+		switch {
+		case ch == 8: // retour arrière
+			r := []rune(root.query)
+			if len(r) == 0 {
+				return
+			}
+			root.query = string(r[:len(r)-1])
+		case ch >= 32 && ch != 127:
+			root.query += string(ch)
+		default:
+			return
+		}
+		reloadMenus()
+		root.sel = -1
+		if strings.TrimSpace(root.query) != "" {
+			moveSel(root, +1) // le premier résultat est sélectionné : Entrée l'ouvre
+		}
+		invalidateLevel(root)
+		return
+	}
 	if ch < 32 {
 		return
 	}
@@ -858,10 +1194,22 @@ func pump(done func() bool) {
 
 // trackMenu affiche le menu sous (x, y) et renvoie l'identifiant choisi (0 si aucun).
 func trackMenu(owner uintptr, items []mItem, x, y int32) int {
+	return trackMenuEx(owner, items, mOpts{}, x, y)
+}
+
+// mOpts : options d'un menu « vivant » (celui d'une icône de la barre).
+type mOpts struct {
+	rebuild func(query string) []mItem // redonne le contenu après un changement
+	search  bool                       // les lettres tapées vont dans le champ de recherche
+	minW    int32                      // largeur minimale
+}
+
+func trackMenuEx(owner uintptr, items []mItem, o mOpts, x, y int32) int {
 	if menuOpen || dialogOpen || len(items) == 0 {
 		return 0
 	}
-	root := &mLevel{items: items, sel: -1, parentIdx: -1}
+	root := &mLevel{items: items, sel: -1, parentIdx: -1, rebuild: o.rebuild, search: o.search, minW: o.minW}
+	mAfter, mDragL = nil, nil
 	measureLevel(root)
 	placeRoot(root, x, y)
 
@@ -892,6 +1240,15 @@ func trackMenu(owner uintptr, items []mItem, x, y int32) int {
 			pSetForeground.Call(prev)
 		}
 	}
+	mDragL = nil
+	if cfgDirty { // réglages modifiés avec un curseur : on les enregistre à la fermeture
+		saveConfig()
+		cfgDirty = false
+	}
+	if f := mAfter; f != nil {
+		mAfter = nil
+		f()
+	}
 	return mResult
 }
 
@@ -906,6 +1263,7 @@ var dlg struct {
 	w, h         int32
 	titleR       rect
 	hintR        rect
+	iconR        rect
 	btn          [2]rect // 0 = annuler, 1 = confirmer
 	hover, press int
 	result, done bool
@@ -936,6 +1294,18 @@ func drawDialog(hdc uintptr, w, h int32) {
 	pSetTextColor.Call(hdc, pal.menuKey)
 	hr := dlg.hintR
 	pDrawText.Call(hdc, ptr(utf16(dlg.hint)), ^uintptr(0), uintptr(unsafe.Pointer(&hr)), dtLeft|dtWordBreak|dtNoPrefix)
+
+	// Icône de l'alerte : le symbole de l'application, comme l'icône d'une alerte macOS.
+	ic := dlg.iconR
+	fillRR(hdc, ic, sc(26), pal.accent)
+	sq, gap := sc(11), sc(3)
+	x0 := ic.Left + (ic.Right-ic.Left-2*sq-gap)/2
+	y0 := ic.Top + (ic.Bottom-ic.Top-2*sq-gap)/2
+	for i := int32(0); i < 2; i++ {
+		for j := int32(0); j < 2; j++ {
+			fillRR(hdc, rect{x0 + j*(sq+gap), y0 + i*(sq+gap), x0 + j*(sq+gap) + sq, y0 + i*(sq+gap) + sq}, sc(3), rgb(255, 255, 255))
+		}
+	}
 
 	labels := [2]string{dlg.cancel, dlg.ok}
 	for i, r := range dlg.btn {
@@ -1043,8 +1413,10 @@ func confirm(owner uintptr, title, okLabel string) bool {
 	dlg.hover, dlg.press, dlg.result, dlg.done, dlg.tracking = -1, -1, false, false, false
 
 	// Mesures
-	w, pad := sc(360), sc(22)
-	tw := w - 2*pad
+	w, pad := sc(420), sc(22)
+	icon := sc(56)
+	tx := pad + icon + sc(16) // le texte à droite de l'icône
+	tw := w - tx - pad
 	dc, _, _ := pGetDC.Call(0)
 	old, _, _ := pSelectObject.Call(dc, fontTitle)
 	th := textHeight(dc, title, tw)
@@ -1060,12 +1432,17 @@ func confirm(owner uintptr, title, okLabel string) bool {
 	if bw < sc(100) {
 		bw = sc(100)
 	}
-	bh := sc(30)
-	h := pad + th + sc(6) + hh + sc(22) + bh + pad
+	bh := sc(28)
+	body := th + sc(6) + hh
+	if body < icon {
+		body = icon
+	}
+	h := pad + body + sc(22) + bh + pad
 
 	dlg.w, dlg.h = w, h
-	dlg.titleR = rect{pad, pad, w - pad, pad + th}
-	dlg.hintR = rect{pad, pad + th + sc(6), w - pad, pad + th + sc(6) + hh}
+	dlg.iconR = rect{pad, pad, pad + icon, pad + icon}
+	dlg.titleR = rect{tx, pad, w - pad, pad + th}
+	dlg.hintR = rect{tx, pad + th + sc(6), w - pad, pad + th + sc(6) + hh}
 	by := h - pad - bh
 	dlg.btn[1] = rect{w - pad - bw, by, w - pad, by + bh}
 	dlg.btn[0] = rect{w - pad - 2*bw - sc(10), by, w - pad - bw - sc(10), by + bh}

@@ -38,7 +38,7 @@ var pLoadImage = user32.NewProc("LoadImageW")
 
 // iconsDir est le dossier des icônes personnalisées.
 func iconsDir() string {
-	return filepath.Join(os.Getenv("APPDATA"), "MenuWindows", "icons")
+	return filepath.Join(appDataDir(), "icons")
 }
 
 // customSprite cherche l'icône personnalisée portant ce nom (sans extension).

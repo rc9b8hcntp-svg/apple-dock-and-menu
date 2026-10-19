@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"unicode"
+	"unsafe"
 )
 
 // ---------------------------------------------------------------------------
@@ -32,44 +33,44 @@ type labels struct {
 
 var fr = labels{
 	about: "À propos de ce PC", settings: "Paramètres système…", store: "Microsoft Store…",
-	recent: "Éléments récents", forceQuit: "Forcer à quitter…\tCtrl+Maj+Échap",
+	recent: "Éléments récents", forceQuit: "Forcer à quitter…\tCtrl+Alt+Échap",
 	sleep: "Mettre en veille", restart: "Redémarrer…", shutdown: "Éteindre…",
-	lock: "Verrouiller l’écran\tWin+L", logoff: "Fermer la session…", quit: "Quitter Menu Windows",
+	lock: "Verrouiller l’écran\tWin+L", logoff: "Fermer la session…", quit: "Quitter Lumen",
 	confirmRestart:  "Voulez-vous vraiment redémarrer votre PC ?",
 	confirmShutdown: "Voulez-vous vraiment éteindre votre PC ?",
 	confirmLogoff:   "Voulez-vous vraiment fermer votre session ?",
 	apps:            "Applications", allApps: "Toutes les applications…",
 	restoreWin: "Afficher", minimizeWin: "Réduire", closeWin: "Fermer",
-	appTitle: "Menu Windows",
-	tip:      "Menu Windows (Ctrl+Alt+M)",
+	appTitle: "Lumen",
+	tip:      "Lumen (Ctrl+Alt+M)",
 	desktop:  "Bureau",
 	cancel:   "Annuler", confirmHint: "Les documents non enregistrés seront perdus.",
 	restartBtn: "Redémarrer", shutdownBtn: "Éteindre", logoffBtn: "Fermer la session",
 	open: "Ouvrir", pin: "Garder dans le Dock", unpin: "Retirer du Dock", bin: "Corbeille",
 	openBin: "Ouvrir la Corbeille", emptyBin: "Vider la Corbeille…",
 	confirmEmpty: "Vider la Corbeille ?", emptyHint: "Les éléments seront supprimés définitivement.", emptyBtn: "Vider",
-	launchpad: "Launchpad", search: "Rechercher", noResult: "Aucun résultat", prefs: "Réglages de Menu Windows…",
+	launchpad: "Launchpad", search: "Rechercher", noResult: "Aucun résultat", prefs: "Réglages de Lumen…",
 }
 
 var en = labels{
 	about: "About This PC", settings: "System Settings…", store: "Microsoft Store…",
-	recent: "Recent Items", forceQuit: "Force Quit…\tCtrl+Shift+Esc",
+	recent: "Recent Items", forceQuit: "Force Quit…\tCtrl+Alt+Esc",
 	sleep: "Sleep", restart: "Restart…", shutdown: "Shut Down…",
-	lock: "Lock Screen\tWin+L", logoff: "Log Out…", quit: "Quit Menu Windows",
+	lock: "Lock Screen\tWin+L", logoff: "Log Out…", quit: "Quit Lumen",
 	confirmRestart:  "Are you sure you want to restart your PC?",
 	confirmShutdown: "Are you sure you want to shut down your PC?",
 	confirmLogoff:   "Are you sure you want to log out?",
 	apps:            "Applications", allApps: "All Apps…",
 	restoreWin: "Show", minimizeWin: "Minimize", closeWin: "Close",
-	appTitle: "Menu Windows",
-	tip:      "Menu Windows (Ctrl+Alt+M)",
+	appTitle: "Lumen",
+	tip:      "Lumen (Ctrl+Alt+M)",
 	desktop:  "Desktop",
 	cancel:   "Cancel", confirmHint: "Unsaved changes will be lost.",
 	restartBtn: "Restart", shutdownBtn: "Shut Down", logoffBtn: "Log Out",
 	open: "Open", pin: "Keep in Dock", unpin: "Remove from Dock", bin: "Recycle Bin",
 	openBin: "Open Recycle Bin", emptyBin: "Empty Recycle Bin…",
 	confirmEmpty: "Empty the Recycle Bin?", emptyHint: "Items will be permanently deleted.", emptyBtn: "Empty",
-	launchpad: "Launchpad", search: "Search", noResult: "No Results", prefs: "Menu Windows Settings…",
+	launchpad: "Launchpad", search: "Search", noResult: "No Results", prefs: "Lumen Settings…",
 }
 
 var t labels
@@ -129,7 +130,7 @@ func showMainMenu(hwnd uintptr, x, y int32) {
 		mi(cmdStore, t.store),
 		mi(cmdLaunchpad, t.launchpad+"\tCtrl+Alt+L"),
 		msep(),
-		mi(cmdRecent, t.recent),
+		msub(t.recent, recentItems()),
 		msep(),
 		mi(cmdForceQuit, t.forceQuit),
 		msep(),
@@ -138,7 +139,7 @@ func showMainMenu(hwnd uintptr, x, y int32) {
 		mi(cmdShutdown, t.shutdown),
 		msep(),
 		mi(cmdLock, t.lock),
-		mi(cmdLogoff, t.logoff),
+		mi(cmdLogoff, logoffLabel()),
 		msep(),
 		mi(cmdQuitApp, t.quit),
 	}
@@ -243,7 +244,7 @@ func showAppsMenu(hwnd uintptr, x, y int32) {
 func execute(hwnd uintptr, cmd int) {
 	switch cmd {
 	case cmdAbout:
-		openURI("ms-settings:about")
+		showAbout()
 	case cmdSettings:
 		openURI("ms-settings:")
 	case cmdStore:
@@ -255,7 +256,7 @@ func execute(hwnd uintptr, cmd int) {
 	case cmdRecent:
 		openURI("shell:recent")
 	case cmdForceQuit:
-		run("taskmgr.exe")
+		showForceQuit()
 	case cmdSleep:
 		// Veille (et non hibernation) : hibernate=false, force=false.
 		pSetSuspendState.Call(0, 0, 0)
@@ -302,24 +303,56 @@ func activeAppWindows() []uintptr {
 
 func showAppMenu(hwnd uintptr, x, y int32) {
 	targets := activeAppWindows()
+	exe := cachedProcPath(active)
+	about := mact(tr("À propos de ", "About ")+activeName, func() {
+		if exe != "" {
+			pSHObjectProperties.Call(0, 2 /*SHOP_FILEPATH*/, ptr(utf16(exe)), 0)
+		}
+	})
+	about.disabled = exe == ""
+	isTarget := func(h uintptr) bool {
+		for _, t := range targets {
+			if t == h {
+				return true
+			}
+		}
+		return false
+	}
 	items := []mItem{
-		mi(cmdAppHide, tr("Masquer ", "Hide ")+activeName),
-		mi(cmdAppClose, tr("Fermer ", "Close ")+activeName),
+		about,
+		msep(),
+		mact(tr("Masquer ", "Hide ")+activeName, func() {
+			for _, h := range targets {
+				pShowWindow.Call(h, swMinimize)
+			}
+		}),
+		mact(tr("Masquer les autres", "Hide Others"), func() {
+			for _, w := range wins {
+				if !isTarget(w.hwnd) {
+					pShowWindow.Call(w.hwnd, swMinimize)
+				}
+			}
+		}),
+		mact(tr("Tout afficher", "Show All"), func() {
+			for _, w := range wins {
+				if ic, _, _ := pIsIconic.Call(w.hwnd); ic != 0 {
+					pShowWindow.Call(w.hwnd, swRestore)
+				}
+			}
+		}),
+		msep(),
+		mItem{text: tr("Quitter ", "Quit ") + activeName, key: "Alt+F4", act: func() {
+			for _, h := range targets {
+				pPostMessage.Call(h, wmClose, 0, 0)
+			}
+		}},
 	}
-	switch trackMenu(hwnd, items, x, y) {
-	case cmdAppHide:
-		for _, h := range targets {
-			pShowWindow.Call(h, swMinimize)
-		}
-	case cmdAppClose:
-		for _, h := range targets {
-			pPostMessage.Call(h, wmClose, 0, 0)
-		}
-	}
+	trackMenu(hwnd, items, x, y)
 }
 
 // ---------------------------------------------------------------------------
-// Menu Fenêtre (réduire, agrandir, fermer, liste des fenêtres ouvertes)
+// Menu Fenêtre (comme sur macOS : Réduire, Zoom, Centrer, placer à gauche / à droite,
+// tout ramener au premier plan, puis la liste des fenêtres ouvertes)
 // ---------------------------------------------------------------------------
 
 func clipTitle(s string, max int) string {
@@ -330,42 +363,118 @@ func clipTitle(s string, max int) string {
 	return s
 }
 
+// placeWindow déplace une fenêtre dans la zone de travail : "left", "right" ou "center".
+func placeWindow(h uintptr, where string) {
+	if z, _, _ := pIsZoomed.Call(h); z != 0 {
+		pShowWindow.Call(h, swRestore)
+	}
+	var wr rect
+	pGetWindowRect.Call(h, uintptr(unsafe.Pointer(&wr)))
+	wa := workArea(wr.Left, wr.Top)
+	w, ht := wr.Right-wr.Left, wr.Bottom-wr.Top
+	x, y, nw, nh := wr.Left, wr.Top, w, ht
+	switch where {
+	case "left":
+		x, y, nw, nh = wa.Left, wa.Top, (wa.Right-wa.Left)/2, wa.Bottom-wa.Top
+	case "right":
+		x, y, nw, nh = wa.Left+(wa.Right-wa.Left)/2, wa.Top, (wa.Right-wa.Left)/2, wa.Bottom-wa.Top
+	case "center":
+		x, y = wa.Left+(wa.Right-wa.Left-w)/2, wa.Top+(wa.Bottom-wa.Top-ht)/2
+	}
+	pSetWindowPos.Call(h, 0, uintptr(x), uintptr(y), uintptr(nw), uintptr(nh), swpNoZOrder)
+	bringToFront(h)
+}
+
 func showWindowMenu(hwnd uintptr, x, y int32) {
 	cur := active
-	var listed []uintptr
-	for _, w := range wins {
-		listed = append(listed, w.hwnd)
+	zoomLabel := tr("Zoom", "Zoom")
+	if cur != 0 {
+		if z, _, _ := pIsZoomed.Call(cur); z != 0 {
+			zoomLabel = tr("Restaurer", "Restore")
+		}
 	}
-	min, zoom, closeW := mi(cmdWinMin, tr("Réduire", "Minimize")), mi(cmdWinZoom, tr("Agrandir", "Zoom")), mi(cmdWinClose, tr("Fermer la fenêtre", "Close Window"))
-	if cur == 0 {
-		min.disabled, zoom.disabled, closeW.disabled = true, true, true
-	} else if z, _, _ := pIsZoomed.Call(cur); z != 0 {
-		zoom.text = tr("Restaurer", "Restore")
+	on := func(label, key string, f func()) mItem {
+		it := mItem{text: label, key: key, act: f}
+		it.disabled = cur == 0
+		return it
 	}
-	items := []mItem{min, zoom, closeW}
+	items := []mItem{
+		on(tr("Réduire", "Minimize"), "Win+↓", func() { pShowWindow.Call(cur, swMinimize) }),
+		on(zoomLabel, "", func() {
+			if z, _, _ := pIsZoomed.Call(cur); z != 0 {
+				pShowWindow.Call(cur, swRestore)
+			} else {
+				pShowWindow.Call(cur, 3 /*SW_MAXIMIZE*/)
+			}
+		}),
+		on(tr("Centrer", "Center"), "", func() { placeWindow(cur, "center") }),
+		msep(),
+		on(tr("Placer à gauche de l’écran", "Move Window to Left Half"), "Win+←", func() { placeWindow(cur, "left") }),
+		on(tr("Placer à droite de l’écran", "Move Window to Right Half"), "Win+→", func() { placeWindow(cur, "right") }),
+		msep(),
+		on(tr("Fermer la fenêtre", "Close Window"), "Alt+F4", func() { pPostMessage.Call(cur, wmClose, 0, 0) }),
+		msep(),
+		mact(tr("Tout ramener au premier plan", "Bring All to Front"), func() {
+			for i := len(wins) - 1; i >= 0; i-- {
+				if wins[i].hwnd != cur {
+					bringToFront(wins[i].hwnd)
+				}
+			}
+			if cur != 0 {
+				bringToFront(cur)
+			}
+		}),
+	}
 	if len(wins) > 0 {
 		items = append(items, msep())
 	}
-	for i, w := range wins {
-		mark := "    "
-		if w.hwnd == cur {
-			mark = "•  "
-		}
-		items = append(items, mi(cmdWinBase+i, mark+clipTitle(w.title, 48)))
+	for _, w := range wins {
+		h := w.hwnd
+		items = append(items, mItem{text: clipTitle(w.title, 48), checkable: true, check: h == cur, act: func() { bringToFront(h) }})
 	}
-	cmd := trackMenu(hwnd, items, x, y)
-	switch {
-	case cmd == cmdWinMin:
-		pShowWindow.Call(cur, swMinimize)
-	case cmd == cmdWinZoom:
-		if z, _, _ := pIsZoomed.Call(cur); z != 0 {
-			pShowWindow.Call(cur, swRestore)
-		} else {
-			pShowWindow.Call(cur, 3 /*SW_MAXIMIZE*/)
-		}
-	case cmd == cmdWinClose:
-		pPostMessage.Call(cur, wmClose, 0, 0)
-	case cmd >= cmdWinBase && cmd-cmdWinBase < len(listed):
-		bringToFront(listed[cmd-cmdWinBase])
+	trackMenu(hwnd, items, x, y)
+}
+
+// ---------------------------------------------------------------------------
+// Éléments récents (sous-menu du menu principal) et nom de la session
+// ---------------------------------------------------------------------------
+
+func recentItems() []mItem {
+	dir := filepath.Join(os.Getenv("APPDATA"), `Microsoft\Windows\Recent`)
+	entries, _ := os.ReadDir(dir)
+	type rec struct {
+		name, path string
+		mod        int64
 	}
+	var list []rec
+	for _, e := range entries {
+		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".lnk") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		list = append(list, rec{strings.TrimSuffix(e.Name(), filepath.Ext(e.Name())), filepath.Join(dir, e.Name()), info.ModTime().UnixNano()})
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].mod > list[j].mod })
+	if len(list) > 10 {
+		list = list[:10]
+	}
+	var items []mItem
+	if len(list) == 0 {
+		items = append(items, minfo(tr("Aucun élément récent", "No Recent Items")))
+	}
+	for _, r := range list {
+		path := r.path
+		items = append(items, mact(clipTitle(r.name, 40), func() { openURI(path) }))
+	}
+	return append(items, msep(), mact(tr("Ouvrir le dossier Récents", "Open Recent Folder"), func() { openURI("shell:recent") }))
+}
+
+func logoffLabel() string {
+	if u := os.Getenv("USERNAME"); u != "" {
+		return tr("Fermer la session de ", "Log Out ") + u + "…"
+	}
+	return t.logoff
 }

@@ -97,7 +97,7 @@ var (
 // ---------------------------------------------------------------------------
 
 func pinsFile() string {
-	return filepath.Join(os.Getenv("APPDATA"), "MenuWindows", "dock.txt")
+	return filepath.Join(appDataDir(), "dock.txt")
 }
 
 func fileExists(p string) bool {
@@ -325,6 +325,11 @@ func appSprite(a *dockApp) *dockgfx.Sprite {
 	if s == nil {
 		s = defaultSprite()
 	}
+	if cfg.DockPlates && !a.launchpad && !a.trash {
+		if pl := dockgfx.Plate(s, pal.dark); pl != nil {
+			s = pl
+		}
+	}
 	spriteCache[a.spriteKey] = s
 	return s
 }
@@ -360,7 +365,8 @@ func dockRefresh() {
 			j++
 		}
 	}
-	if placeDock() || changed {
+	moved := placeDock()
+	if bd := dockBackdropUpdate(false); moved || changed || bd {
 		dockPaint()
 	}
 }
@@ -376,11 +382,13 @@ func rebuildItems(apps []*dockApp) {
 		}
 		wanted[a.spriteKey] = true
 		dockApps = append(dockApps, a)
-		dockItems = append(dockItems, dockgfx.Item{Sprite: appSprite(a), Running: len(a.hwnds) > 0 && cfg.DockDots})
+		sp := appSprite(a)
+		dockItems = append(dockItems, dockgfx.Item{Sprite: sp, Shadow: dockShadow(a.spriteKey, sp), Running: len(a.hwnds) > 0 && cfg.DockDots})
 	}
 	for k := range spriteCache {
 		if !wanted[k] {
 			delete(spriteCache, k)
+			delete(dockBD.shadowByName, k)
 		}
 	}
 	dockHover = -1
@@ -390,14 +398,28 @@ func rebuildItems(apps []*dockApp) {
 // placeDock règle la taille et la position de la fenêtre (en bas, au centre de
 // la zone de travail). Renvoie true si quelque chose a changé.
 func placeDock() bool {
-	w := int32(dockParams.WindowW(dockItems))
-	h := int32(dockParams.WindowH())
+	o := dockOrient()
+	we := int32(dockParams.WindowW(dockItems))
+	he := int32(dockParams.WindowH())
 	wa := workArea(0, 0)
-	if limit := wa.Right - wa.Left; w > limit {
-		w = limit
+	limit := wa.Right - wa.Left
+	if o != dockgfx.Bottom {
+		limit = wa.Bottom - wa.Top
 	}
-	x := wa.Left + (wa.Right-wa.Left-w)/2
-	y := wa.Bottom - h
+	if we > limit {
+		we = limit
+	}
+	wi, hi := o.WindowSize(int(we), int(he))
+	w, h := int32(wi), int32(hi)
+	var x, y int32
+	switch o {
+	case dockgfx.Left:
+		x, y = wa.Left, wa.Top+(wa.Bottom-wa.Top-h)/2
+	case dockgfx.Right:
+		x, y = wa.Right-w, wa.Top+(wa.Bottom-wa.Top-h)/2
+	default:
+		x, y = wa.Left+(wa.Right-wa.Left-w)/2, wa.Bottom-h
+	}
 	if w == dockW && h == dockH && x == dockX && y == dockY && dib.bits != nil {
 		return false
 	}
@@ -444,8 +466,23 @@ func dockPaint() {
 	if dockHwnd == 0 || dib.bits == nil || dockHidden {
 		return
 	}
-	dockLay = dockgfx.Compute(dockParams, dockItems, int(dockW), int(dockH), dockMouse, dockStrength)
-	dockgfx.Render(dib.bits, int(dockW), int(dockH), dockParams, dockItems, dockLay, 2)
+	if dockSlideHidden {
+		return
+	}
+	for i := range dockItems {
+		dockItems[i].Lift = bounceLift(i)
+	}
+	we, he := dockEngDims()
+	dockLay = dockgfx.Compute(dockParams, dockItems, we, he, dockMouse, dockStrength)
+	dockBackdropUpdate(false)
+	dockgfx.RenderStyled(dib.bits, int(dockW), int(dockH), dockParams, dockItems, dockLay, 2, dockStyle())
+	if dockSlide > 0.001 { // masquage automatique : le contenu glisse vers le bas
+		thick := dockH
+		if dockOrient() != dockgfx.Bottom {
+			thick = dockW
+		}
+		shiftBuffer(dib.bits, int(dockW), int(dockH), dockOrient(), int(dockSlide*float64(thick)+0.5))
+	}
 
 	pos := point{dockX, dockY}
 	sz := size{dockW, dockH}
@@ -536,9 +573,15 @@ func moveLabel() {
 	if labelHwnd == 0 || dockHover < 0 || dockHover >= len(dockLay.Items) {
 		return
 	}
-	r := dockLay.Items[dockHover]
+	r := dockWinRect(dockLay.Items[dockHover])
 	x := dockX + int32(r.X+r.W/2) - labelW/2
 	y := dockY + int32(r.Y) - labelHeight() - sc(6)
+	switch dockOrient() {
+	case dockgfx.Left:
+		x, y = dockX+int32(r.X+r.W)+sc(8), dockY+int32(r.Y+r.H/2)-labelHeight()/2
+	case dockgfx.Right:
+		x, y = dockX+int32(r.X)-labelW-sc(8), dockY+int32(r.Y+r.H/2)-labelHeight()/2
+	}
 	wa := workArea(x, y)
 	if x+labelW > wa.Right {
 		x = wa.Right - labelW
@@ -606,6 +649,7 @@ func dockActivate(i int) {
 		}
 		bringToFront(target)
 	default:
+		startBounce(a.key)
 		openURI(a.launch)
 	}
 }
@@ -620,11 +664,23 @@ func dockContextMenu(i int) {
 		return
 	}
 	a := dockApps[i]
+	r := dockWinRect(dockLay.Items[i])
+	x, y := dockX+int32(r.X), dockY+int32(r.Y)
 	if a.launchpad {
+		setHover(-1)
+		trackMenuEx(dockHwnd, []mItem{
+			mact(tr("Ouvrir le Launchpad", "Open Launchpad"), showLaunchpad),
+			msep(),
+			cfgChoice(tr("Plein écran", "Full Screen"), &cfg.LaunchpadMode, "full"),
+			cfgChoice(tr("Petit", "Small"), &cfg.LaunchpadMode, "small"),
+			msep(),
+			mheader(tr("Position à l’écran", "Position on Screen")),
+			cfgChoice(tr("À gauche", "Left"), &cfg.DockPosition, "left"),
+			cfgChoice(tr("En bas", "Bottom"), &cfg.DockPosition, "bottom"),
+			cfgChoice(tr("À droite", "Right"), &cfg.DockPosition, "right"),
+		}, mOpts{minW: sc(200)}, x, y)
 		return
 	}
-	r := dockLay.Items[i]
-	x, y := dockX+int32(r.X), dockY+int32(r.Y)
 
 	var items []mItem
 	switch {
@@ -702,8 +758,10 @@ func inDock(p point) bool {
 }
 
 func dockHit(lparam uintptr) (int, int32, int32) {
-	x, y := lparamXY(lparam)
-	return dockgfx.HitTest(dockParams, dockItems, dockLay, float64(x), float64(y)), x, y
+	wx, wy := lparamXY(lparam)
+	we, he := dockEngDims()
+	ex, ey := dockOrient().ToEngine(float64(wx), float64(wy), float64(we), float64(he))
+	return dockgfx.HitTest(dockParams, dockItems, dockLay, ex, ey), int32(ex), int32(ey)
 }
 
 func dockProc(hwnd, message, wparam, lparam uintptr) uintptr {
@@ -738,8 +796,13 @@ func dockProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		return 0
 
 	case wmTimer:
-		if wparam == dockTimerID {
+		switch wparam {
+		case dockTimerID:
 			dockTick()
+		case dockBounceTimerID:
+			dockBounceTick()
+		case dockAutoTimerID:
+			dockAutoTick()
 		}
 		return 0
 
@@ -822,6 +885,7 @@ func initDock() {
 	pShowWindow.Call(dockHwnd, swShowNoActivate)
 	dockPaint()
 	dockUpdateHidden() // Dock désactivé dans les réglages : on le cache aussitôt
+	dockApplyAutoHide()
 }
 
 var dockFull bool // une application est en plein écran
@@ -844,11 +908,17 @@ func dockUpdateHidden() {
 		pShowWindow.Call(dockHwnd, 0)
 		return
 	}
-	pShowWindow.Call(dockHwnd, swShowNoActivate)
+	if !dockSlideHidden {
+		pShowWindow.Call(dockHwnd, swShowNoActivate)
+	}
 	dockPaint()
 }
 
 func shutdownDock() {
+	if dockHwnd != 0 {
+		pKillTimer.Call(dockHwnd, dockBounceTimerID)
+		pKillTimer.Call(dockHwnd, dockAutoTimerID)
+	}
 	if dockTimerOn && dockHwnd != 0 {
 		pKillTimer.Call(dockHwnd, dockTimerID)
 	}

@@ -197,3 +197,66 @@ func TestPNG(t *testing.T) {
 		f.Close()
 	}
 }
+
+func TestOrientRoundTrip(t *testing.T) {
+	we, he := 600.0, 90.0
+	for _, o := range []Orient{Bottom, Left, Right} {
+		for _, pt := range [][2]float64{{10, 20}, {599, 89}, {300, 45}} {
+			wx, wy := o.FromEngine(pt[0], pt[1], we, he)
+			ex, ey := o.ToEngine(wx, wy, we, he)
+			if ex != pt[0] || ey != pt[1] {
+				t.Fatalf("orient %d: (%v,%v) -> (%v,%v) -> (%v,%v)", o, pt[0], pt[1], wx, wy, ex, ey)
+			}
+		}
+		w, h := o.WindowSize(int(we), int(he))
+		ew, eh := o.Engine(w, h)
+		if ew != int(we) || eh != int(he) {
+			t.Fatalf("orient %d: tailles %d×%d -> %d×%d", o, ew, eh, w, h)
+		}
+	}
+}
+
+func TestOrientRectInWindow(t *testing.T) {
+	we, he := 600.0, 90.0
+	r := Rect{100, 20, 48, 48}
+	for _, o := range []Orient{Left, Right} {
+		w, h := o.WindowSize(int(we), int(he))
+		wr := o.Rect(r, we, he)
+		if wr.W != r.W || wr.H != r.H {
+			t.Fatalf("la taille de l'icône change : %+v", wr)
+		}
+		if wr.X < 0 || wr.Y < 0 || wr.X+wr.W > float64(w) || wr.Y+wr.H > float64(h) {
+			t.Fatalf("orient %d : hors fenêtre %+v (%d×%d)", o, wr, w, h)
+		}
+	}
+	// le bas du moteur est contre le bord : à gauche x petit, à droite x grand
+	bottomIcon := Rect{100, he - 10, 48, 8}
+	if lr := Left.Rect(bottomIcon, we, he); lr.X > 5 {
+		t.Fatalf("à gauche l'icône du bas devrait coller au bord gauche : %+v", lr)
+	}
+	if rr := Right.Rect(bottomIcon, we, he); rr.X < he-12 {
+		t.Fatalf("à droite l'icône du bas devrait coller au bord droit : %+v", rr)
+	}
+}
+
+func TestRenderSides(t *testing.T) {
+	p := NewParams(1)
+	items := []Item{{Sprite: &Sprite{W: 2, H: 2, Pix: []uint32{0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000}}, Running: true}, {Separator: true},
+		{Sprite: &Sprite{W: 2, H: 2, Pix: []uint32{0xFF00FF00, 0xFF00FF00, 0xFF00FF00, 0xFF00FF00}}}}
+	we, he := p.WindowW(items), p.WindowH()
+	for _, o := range []Orient{Bottom, Left, Right} {
+		w, h := o.WindowSize(we, he)
+		l := Compute(p, items, we, he, float64(we)/2, 1)
+		buf := make([]uint32, w*h)
+		RenderStyled(buf, w, h, p, items, l, 2, Style{Glass: true, Orient: o})
+		opaque := 0
+		for _, px := range buf {
+			if px>>24 > 200 {
+				opaque++
+			}
+		}
+		if opaque == 0 {
+			t.Fatalf("orient %d : rien de dessiné", o)
+		}
+	}
+}

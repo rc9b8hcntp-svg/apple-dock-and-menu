@@ -14,3 +14,5 @@ var (
 	pAdjustWindowRectEx = user32.NewProc("AdjustWindowRectEx")
 	pSetWindowText      = user32.NewProc("SetWindowTextW")
 )
+
+var pSHObjectProperties = shell32.NewProc("SHObjectProperties")

@@ -18,7 +18,9 @@ type Sprite struct {
 type Item struct {
 	Sprite    *Sprite
 	Separator bool
-	Running   bool // affiche le petit point sous l'icône
+	Running   bool    // affiche le petit point sous l'icône
+	Lift      float64 // décalage vers le haut en pixels (rebond au lancement)
+	Shadow    *Sprite // ombre douce sous l'icône (facultative)
 }
 
 // Rect est un rectangle en pixels (flottants pour l'animation).
@@ -312,63 +314,11 @@ func drawDisc(buf []uint32, W, H int, cx, cy, rad float64, color uint32) {
 	}
 }
 
-// Render dessine tout le Dock dans buf (W×H pixels). hitAlpha est l'opacité
-// quasi invisible dont on remplit le fond : sans elle, Windows laisse passer
-// la souris à travers la fenêtre transparente.
+// Render dessine tout le Dock dans buf (W×H pixels) avec l'aspect de base. hitAlpha
+// est l'opacité quasi invisible dont on remplit le fond : sans elle, Windows laisse
+// passer la souris à travers la fenêtre transparente.
 func Render(buf []uint32, W, H int, p Params, items []Item, l Layout, hitAlpha uint8) {
-	fill := uint32(hitAlpha) << 24
-	for i := range buf {
-		buf[i] = fill
-	}
-
-	// Barre translucide avec un fin liseré clair.
-	pr := l.Panel
-	panelFill := premul(30, 30, 34, 0.58)
-	border := premul(255, 255, 255, 0.20)
-	bw := math.Max(1, p.Corner/16)
-	for y := int(pr.Y) - 1; y <= int(pr.Y+pr.H)+1; y++ {
-		if y < 0 || y >= H {
-			continue
-		}
-		for x := int(pr.X) - 1; x <= int(pr.X+pr.W)+1; x++ {
-			if x < 0 || x >= W {
-				continue
-			}
-			d := sdRoundRect(float64(x)+0.5, float64(y)+0.5, pr, p.Corner)
-			cov := clamp01(0.5 - d)
-			if cov <= 0 {
-				continue
-			}
-			inner := clamp01(0.5 - (d + bw))
-			bcov := cov - inner
-			px := buf[y*W+x]
-			px = over(px, scaleColor(panelFill, cov))
-			if bcov > 0 {
-				px = over(px, scaleColor(border, bcov))
-			}
-			buf[y*W+x] = px
-		}
-	}
-
-	dotColor := premul(255, 255, 255, 0.92)
-	sepColor := premul(255, 255, 255, 0.30)
-	for i, it := range items {
-		r := l.Items[i]
-		if it.Separator {
-			x := int(r.X + r.W/2)
-			for y := int(r.Y + r.H*0.12); y < int(r.Y+r.H*0.88); y++ {
-				if x >= 0 && x < W && y >= 0 && y < H {
-					buf[y*W+x] = over(buf[y*W+x], sepColor)
-				}
-			}
-			continue
-		}
-		drawSprite(buf, W, H, it.Sprite, r)
-		if it.Running {
-			cy := pr.Y + pr.H - p.PadY - p.DotH/2 + p.DotH*0.12
-			drawDisc(buf, W, H, r.X+r.W/2, cy, math.Max(1.8, p.Base/22), dotColor)
-		}
-	}
+	RenderStyled(buf, W, H, p, items, l, hitAlpha, Style{})
 }
 
 // ---------------------------------------------------------------------------

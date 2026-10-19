@@ -24,8 +24,12 @@ const (
 	hitAppName            // nom de l'application active
 	hitApps               // menu Applications
 	hitWindow             // menu Fenêtre
+	hitFile
+	hitEdit
+	hitInput
 	hitBattery
 	hitWifi
+	hitBluetooth
 	hitSound
 	hitSearch
 	hitControl
@@ -50,7 +54,6 @@ var (
 	hoverIdx   = -1
 	tracking   bool
 	pressed    int // type de l'élément dont le menu est ouvert
-	barDown    int // élément sur lequel le bouton de la souris est enfoncé (icônes d'état)
 	clockText  string
 	activeName string // nom de l'application active (affiché en gras, comme sur macOS)
 
@@ -75,7 +78,7 @@ func initBarResources() {
 	mk := func(weight int) uintptr {
 		h := -sc(13)
 		f, _, _ := pCreateFont.Call(uintptr(h), 0, 0, 0, uintptr(weight), 0, 0, 0,
-			1 /*DEFAULT_CHARSET*/, 0, 0, 5 /*CLEARTYPE*/, 0, ptr(utf16("Segoe UI")))
+			1 /*DEFAULT_CHARSET*/, 0, 0, 5 /*CLEARTYPE*/, 0, ptr(utf16(uiFace())))
 		return f
 	}
 	fontReg = mk(400)
@@ -309,7 +312,9 @@ func drawGlyph(hdc uintptr, r rect) {
 
 func drawBar(hdc uintptr, w, h int32) {
 	full := rect{0, 0, w, h}
-	pFillRect.Call(hdc, uintptr(unsafe.Pointer(&full)), brushBar)
+	if !barBlurPaint(hdc, w, h) {
+		pFillRect.Call(hdc, uintptr(unsafe.Pointer(&full)), brushBar)
+	}
 	pSetBkMode.Call(hdc, transparent)
 	pSetTextColor.Call(hdc, pal.barText)
 	hits = hits[:0]
@@ -323,7 +328,7 @@ func drawBar(hdc uintptr, w, h int32) {
 
 	add := func(kind int, r rect) {
 		hits = append(hits, hit{r: r, kind: kind})
-		if pressed == kind || barDown == kind {
+		if pressed == kind || (kind == hitSearch && sp.hwnd != 0) || (kind == hitControl && cc.hwnd != 0) || (kind == hitClock && cal.hwnd != 0) {
 			fillRR(hdc, r, sc(9), pal.barPress)
 		}
 	}
@@ -354,6 +359,19 @@ func drawBar(hdc uintptr, w, h int32) {
 			col = pal.menuOff
 		}
 		drawIconGlyph(hdc, "\uE701", item(hitWifi, iconW), col)
+	}
+	if inputLabel != "" {
+		it := item(hitInput, textWidth(hdc, inputLabel)+2*sc(8))
+		drawText(hdc, inputLabel, it, dtCenter)
+	}
+	if cfg.ShowBluetooth {
+		if present, on, _ := btState(); present {
+			col := pal.barText
+			if !on {
+				col = pal.menuOff
+			}
+			drawIconGlyph(hdc, "\uE702", item(hitBluetooth, iconW), col)
+		}
 	}
 	if cfg.ShowBattery && battPct >= 0 {
 		drawBattery(hdc, item(hitBattery, batteryItemWidth(hdc)))
@@ -399,6 +417,12 @@ func drawBar(hdc uintptr, w, h int32) {
 		drawText(hdc, label, r, dtCenter)
 		x = r.Right
 	}
+	if cfg.ShowFile && active != 0 {
+		menu(hitFile, tr("Fichier", "File"))
+	}
+	if cfg.ShowEdit && active != 0 {
+		menu(hitEdit, tr("Édition", "Edit"))
+	}
 	if cfg.ShowApps {
 		menu(hitApps, t.apps)
 	}
@@ -423,10 +447,7 @@ func barMenuKindAt(p point) int {
 	var wr rect
 	pGetWindowRect.Call(barHwnd, uintptr(unsafe.Pointer(&wr)))
 	if i := hitAt(p.X-wr.Left, p.Y-wr.Top); i >= 0 {
-		switch k := hits[i].kind; k {
-		case hitMenu, hitAppName, hitApps, hitWindow:
-			return k
-		}
+		return hits[i].kind
 	}
 	return 0
 }
@@ -456,6 +477,10 @@ func invalidate(hwnd uintptr) { pInvalidateRect.Call(hwnd, 0, 0) }
 // ---------------------------------------------------------------------------
 
 func positionBar(hwnd uintptr) {
+	if cfg.BarAutoHide { // la barre ne réserve pas de place : elle glisse en haut de l'écran
+		barPlaceSlid()
+		return
+	}
 	sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
 	abd := appBarData{HWnd: hwnd, CallbackMessage: wmAppBar, Edge: abeTop}
 	abd.Size = uint32(unsafe.Sizeof(abd))
@@ -471,6 +496,11 @@ func positionBar(hwnd uintptr) {
 }
 
 func registerAppBar(hwnd uintptr) {
+	if cfg.BarAutoHide {
+		barAuto.prevAuto = true
+		positionBar(hwnd)
+		return
+	}
 	abd := appBarData{HWnd: hwnd, CallbackMessage: wmAppBar}
 	abd.Size = uint32(unsafe.Sizeof(abd))
 	r, _, _ := pSHAppBarMessage.Call(abmNew, uintptr(unsafe.Pointer(&abd)))

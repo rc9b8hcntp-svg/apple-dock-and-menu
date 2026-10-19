@@ -83,7 +83,7 @@ func regDelete(subkey, name string) {
 const (
 	runKey      = `Software\Microsoft\Windows\CurrentVersion\Run`
 	approvedKey = `Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run`
-	runName     = "MenuWindows"
+	runName     = "Lumen"
 )
 
 // autostartEnabled : le Gestionnaire des tâches (onglet Démarrage) et ce réglage

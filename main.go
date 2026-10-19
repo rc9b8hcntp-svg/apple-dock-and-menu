@@ -1,6 +1,6 @@
 //go:build windows
 
-// Menu Windows : un menu système façon « menu Apple » pour Windows.
+// Lumen : un menu système façon « menu Apple » pour Windows.
 //
 // Une barre fine, façon barre des menus de macOS, reste en haut de l'écran :
 //   - à gauche, le bouton du menu système (éteindre, redémarrer, verrouiller…)
@@ -27,7 +27,7 @@ var (
 )
 
 func addTrayIcon(hwnd uintptr) {
-	icon, _, _ := pLoadIcon.Call(0, idiApp)
+	icon := appIcon(smallIconSize())
 	nid = notifyIconData{
 		HWnd:            hwnd,
 		ID:              1,
@@ -59,6 +59,26 @@ func openFromBar(hwnd uintptr, kind int, r rect) {
 			showAppsMenu(hwnd, x, y)
 		case hitWindow:
 			showWindowMenu(hwnd, x, y)
+		case hitFile:
+			showFileMenu(hwnd, x, y)
+		case hitEdit:
+			showEditMenu(hwnd, x, y)
+		case hitInput:
+			showInputMenu(hwnd, x, y)
+		case hitBattery:
+			showBatteryMenu(hwnd, x, y)
+		case hitWifi:
+			showWifiMenu(hwnd, x, y)
+		case hitBluetooth:
+			showBluetoothMenu(hwnd, x, y)
+		case hitSound:
+			showSoundMenu(hwnd, x, y)
+		case hitSearch:
+			showSpotlight()
+		case hitControl:
+			showControlCenter()
+		case hitClock:
+			showCalendar()
 		}
 		pressed = 0
 		invalidate(hwnd)
@@ -83,14 +103,33 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		return 0
 
 	case wmTimer:
+		if wparam == hotTimerID {
+			hotCornersTick()
+			return 0
+		}
+		if wparam == capTimerID {
+			capTick()
+			return 0
+		}
+		if wparam == barSlideTimerID {
+			barSlideTick()
+			return 0
+		}
 		c1 := refresh()
 		c2 := updateClock()
 		if updateStatus() {
 			c2 = true
 		}
+		if barBlurTick() {
+			c2 = true
+		}
+		if updateInput() {
+			c2 = true
+		}
 		if c1 || c2 {
 			invalidate(hwnd)
 		}
+		keepTaskbarHidden()
 		dockRefresh() // le Dock suit les fenêtres ouvertes
 		checkTheme()  // thème « Automatique » : suit le mode clair/sombre de Windows
 		return 0
@@ -125,25 +164,11 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		if i < 0 {
 			return 0
 		}
-		h := hits[i]
-		switch h.kind {
-		case hitMenu, hitAppName, hitApps, hitWindow:
-			// Comme sur macOS, un menu s'ouvre dès que le bouton est enfoncé.
-			openFromBar(hwnd, h.kind, h.r)
-		default:
-			barDown = h.kind // icône d'état : l'action part au relâchement
-			pSetCapture.Call(hwnd)
-			invalidate(hwnd)
-		}
+		// Comme sur macOS, un menu s'ouvre dès que le bouton est enfoncé.
+		openFromBar(hwnd, hits[i].kind, hits[i].r)
 		return 0
 
 	case wmLButtonUp:
-		down := barDown
-		if down != 0 {
-			barDown = 0
-			pReleaseCapture.Call()
-			invalidate(hwnd)
-		}
 		if ignoreNextUp {
 			ignoreNextUp = false
 			return 0
@@ -151,13 +176,6 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		if menuOpen {
 			cancelMenu()
 			return 0
-		}
-		if dialogOpen || down == 0 {
-			return 0
-		}
-		x, y := lparamXY(lparam)
-		if i := hitAt(x, y); i >= 0 && hits[i].kind == down {
-			barAction(down)
 		}
 		return 0
 
@@ -182,13 +200,39 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		if dialogOpen {
 			return 0
 		}
+		// Clic droit sur l'horloge : les réglages de l'horloge (date, secondes, 24 h / 12 h).
+		x, y := lparamXY(lparam)
+		if i := hitAt(x, y); i >= 0 && hits[i].kind == hitClock {
+			sx, sy := screenPos(hwnd, hits[i].r)
+			pressed = hitClock
+			invalidate(hwnd)
+			showClockMenu(hwnd, sx, sy)
+			pressed = 0
+			invalidate(hwnd)
+		}
 		return 0
 
 	case wmHotkey:
+		barRevealNow()
 		if wparam == 2 { // Ctrl+Alt+L : Launchpad
+			closeSpotlight(false)
+			closeControlCenter(false)
+			closeCalendar(false)
 			showLaunchpad()
 			return 0
 		}
+		if wparam == 3 { // Ctrl+Alt+Espace : Spotlight
+			showSpotlight()
+			return 0
+		}
+		if wparam == 4 { // Ctrl+Alt+Échap : Forcer à quitter
+			closeSpotlight(false)
+			closeControlCenter(false)
+			closeCalendar(false)
+			showForceQuit()
+			return 0
+		}
+		closeSpotlight(false)
 		if lp.hwnd != 0 {
 			closeLaunchpad(true)
 		}
@@ -204,7 +248,12 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		}
 		return 0
 
+	case swMsg:
+		swHandle(wparam)
+		return 0
+
 	case wmTray:
+		barRevealNow()
 		if menuOpen {
 			cancelMenu()
 			return 0
@@ -246,7 +295,17 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 	case wmDestroy:
 		pKillTimer.Call(hwnd, 1)
 		shutdownDock()
+		capCloseAll()
 		closeLaunchpad(false)
+		closeSpotlight(false)
+		closeControlCenter(false)
+		closeCalendar(false)
+		closeAbout(false)
+		setSwitcherHook(false)
+		closeWidgets()
+		closeCorners()
+		barBlurFree()
+		restoreTaskbar()
 		setHotkeys(false)
 		removeAppBar(hwnd)
 		if trayAdded {
@@ -268,6 +327,7 @@ func main() {
 		return
 	}
 
+	migrateLegacy()
 	pSetProcessDPIAw.Call()
 
 	loadConfig()
@@ -311,8 +371,17 @@ func main() {
 	setHotkeys(cfg.Hotkey)
 	refresh()
 	initDock()
+	startFileIndex()
+	startBrightness()
+	btRefresh()
 	applied = cfg
+	applyTaskbar()
+	applyWidgets()
+	applyCorners()
+	setSwitcherHook(cfg.AppSwitcher)
 	pSetTimer.Call(hwnd, 1, 500, 0)
+	hotTimerSync()
+	capSync()
 
 	var m msg
 	for {

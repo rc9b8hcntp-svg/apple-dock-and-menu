@@ -451,11 +451,27 @@ func showLaunchpad() {
 	if w < 320 || h < 240 {
 		return
 	}
+	small := cfg.LaunchpadMode == "small"
+	dim := 0.5
+	if small {
+		// Version « petite » : une fenêtre centrée aux coins arrondis, au lieu de tout l'écran.
+		sw, sh := sc(980), sc(680)
+		if sw > w*82/100 {
+			sw = w * 82 / 100
+		}
+		if sh > h*82/100 {
+			sh = h * 82 / 100
+		}
+		l, tp := mr.Left+(w-sw)/2, mr.Top+(h-sh)/2
+		mr = rect{l, tp, l + sw, tp + sh}
+		w, h = sw, sh
+		dim = 0.55
+	}
 
 	// Fond : l'écran tel qu'il est, flouté et assombri.
 	lp.bg = nil
 	if shot := captureScreen(mr); shot != nil {
-		lp.bg = launchpad.BlurDim(shot, int(w), int(h), 0.5)
+		lp.bg = launchpad.BlurDim(shot, int(w), int(h), dim)
 	} else {
 		lp.bg = make([]uint32, int(w)*int(h))
 		for i := range lp.bg {
@@ -494,6 +510,9 @@ func showLaunchpad() {
 	}
 	lp.hwnd = hwnd
 	pSetLayeredWindowAttributes.Call(hwnd, 0, 0, lwaAlpha)
+	if small {
+		styleWindow(hwnd, w, h)
+	}
 	pShowWindow.Call(hwnd, swShow)
 	pSetForeground.Call(hwnd)
 	pSetFocus.Call(hwnd)
