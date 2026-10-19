@@ -10,9 +10,14 @@ on:
 permissions:
   contents: write
 
+# Signature de code (gratuite pour l'open source avec SignPath Foundation, voir SIGNING.md) :
+# elle ne s'active que si la variable de dépôt SIGNPATH_ORGANIZATION_ID existe
+# (Settings > Secrets and variables > Actions > Variables) et jamais sur une pull request.
+# Sans cette variable, rien ne change : les fichiers sont simplement non signés.
+
 jobs:
-  msi:
-    name: MSI ${{ matrix.arch }}
+  exe:
+    name: lumen.exe ${{ matrix.arch }}
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -33,6 +38,11 @@ jobs:
         with:
           go-version: '1.24'
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Test the Dock renderer
         shell: pwsh
         run: go test ./internal/...
@@ -49,13 +59,118 @@ jobs:
           "version=$v" >> $env:GITHUB_OUTPUT
           Write-Host "Version: $v"
 
+      # Icône + informations de version (nom du produit, numéro…) dans lumen.exe
+      - name: Write the exe version info
+        shell: pwsh
+        run: |
+          python -m pip install --quiet pillow
+          python assets/make_syso.py ${{ steps.ver.outputs.version }}
+
       - name: Build lumen.exe (${{ matrix.arch }})
         shell: pwsh
         env:
           CGO_ENABLED: '0'
           GOOS: windows
           GOARCH: ${{ matrix.goarch }}
-        run: go build -trimpath -ldflags "-H windowsgui" -o installer/lumen.exe .
+        run: go build -trimpath -ldflags "-H windowsgui -X main.appVersion=${{ steps.ver.outputs.version }}" -o installer/lumen.exe .
+
+      - name: Upload lumen.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: exe-${{ matrix.arch }}
+          path: installer/lumen.exe
+          if-no-files-found: error
+
+  # Une seule demande de signature pour les trois lumen.exe (une seule approbation à donner).
+  sign:
+    name: Sign lumen.exe (SignPath)
+    if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && github.event_name != 'pull_request' }}
+    needs: exe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the three lumen.exe
+        uses: actions/download-artifact@v4
+        with:
+          pattern: exe-*
+          path: unsigned
+
+      - name: Upload for signing
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-exes
+          path: unsigned
+
+      - name: Submit the signing request
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'lumen' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_SLUG || 'exes' }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200   # le temps de l'approbation manuelle
+          output-artifact-directory: signed
+
+      - name: Keep the signed files
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-exes
+          path: signed
+          if-no-files-found: error
+
+  msi:
+    name: MSI ${{ matrix.arch }}
+    # S'exécute aussi quand la signature est ignorée (pas de compte SignPath), jamais si elle a échoué.
+    if: ${{ !cancelled() && needs.exe.result == 'success' && needs.sign.result != 'failure' }}
+    needs: [exe, sign]
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+          - arch: x86
+          - arch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute version
+        id: ver
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $v = $env:GITHUB_REF_NAME.TrimStart('v')
+          } else {
+            $v = "1.0.$env:GITHUB_RUN_NUMBER"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Get lumen.exe (signed)
+        if: ${{ needs.sign.result == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-exes
+          path: signed
+
+      - name: Get lumen.exe (not signed)
+        if: ${{ needs.sign.result != 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: exe-${{ matrix.arch }}
+          path: unsigned
+
+      - name: Place lumen.exe
+        shell: pwsh
+        run: |
+          if (Test-Path "signed/exe-${{ matrix.arch }}/lumen.exe") {
+            Copy-Item "signed/exe-${{ matrix.arch }}/lumen.exe" installer/lumen.exe -Force
+          } else {
+            Copy-Item "unsigned/lumen.exe" installer/lumen.exe -Force
+          }
 
       - name: Install WiX Toolset
         shell: pwsh
@@ -77,7 +192,7 @@ jobs:
     name: Publish GitHub Release
     # Publie à chaque push sur main, à chaque tag v* et au lancement manuel
     # (seules les pull requests ne publient rien).
-    if: github.event_name != 'pull_request'
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.msi.result == 'success' }}
     needs: msi
     runs-on: ubuntu-latest
     steps:
