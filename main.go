@@ -115,6 +115,10 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			barSlideTick()
 			return 0
 		}
+		if wparam == taskbarTimerID {
+			keepTaskbarHidden() // la barre des tâches Windows ne doit jamais remonter
+			return 0
+		}
 		c1 := refresh()
 		c2 := updateClock()
 		if updateStatus() {
@@ -130,6 +134,8 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			invalidate(hwnd)
 		}
 		keepTaskbarHidden()
+		keepTaskbarAutoHide()
+		updateTick()  // mises à jour : recherche automatique et état à l'écran
 		dockRefresh() // le Dock suit les fenêtres ouvertes
 		checkTheme()  // thème « Automatique » : suit le mode clair/sombre de Windows
 		return 0
@@ -382,6 +388,7 @@ func main() {
 	pSetTimer.Call(hwnd, 1, 500, 0)
 	hotTimerSync()
 	capSync()
+	updateStartup()
 
 	var m msg
 	for {

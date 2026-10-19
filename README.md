@@ -39,7 +39,7 @@ Un menu système façon « menu Apple » pour Windows, avec un Dock comme sur ma
 
 **Un Dock flottant en bas de l'écran** (la barre des tâches « à la Mac ») :
 
-- **Barre des tâches Windows** : le réglage « Masquer la barre des tâches Windows » (Réglages > Barre) la cache pour de bon : elle ne remonte plus quand la souris touche le bord bas de l'écran, et sa place est libérée. Elle est rétablie telle qu'elle était à la fermeture du programme ou quand on décoche le réglage (si le programme s'arrêtait brutalement, la relancer puis décocher le réglage la remet)
+- **Barre des tâches Windows bloquée** (activé par défaut ; Réglages > Barre > « Bloquer la barre des tâches Windows ») : elle est cachée pour de bon et ne remonte plus quand la souris touche le bord bas de l'écran, ni avec la touche Windows : un minuteur la recache toutes les 20 ms, et la remet en masquage automatique si l'Explorateur a retrouvé ses réglages (redémarrage…). Sa place est libérée pour le Dock. Elle est rétablie telle qu'elle était à la fermeture du programme ou quand on décoche le réglage (si le programme s'arrêtait brutalement, la relancer puis décocher le réglage la remet)
 - **Dock : masquage automatique** (Réglages > Dock) : le Dock glisse vers le bas quand la souris s'en éloigne et revient quand elle touche le bord bas de l'écran. **Rebond** : l'icône d'une application saute pendant son lancement, comme sur macOS.
 - **Launchpad en deux tailles** (Réglages > Dock, ou clic droit sur son icône du Dock) : **plein écran** ou **petit**, une fenêtre centrée aux coins arrondis sur fond flou ;
 - **Launchpad** : la première icône du Dock (ou `Ctrl+Alt+L`, ou le menu du symbole) ouvre une grille plein écran de toutes vos applications (celles du menu Démarrer), sur un fond flou. Tapez pour rechercher (Échap efface la recherche, puis ferme), changez de page à la molette, avec les points du bas, les flèches ou Page préc./Page suiv., Entrée ou un clic lance l'application, un clic à côté ferme. Pour changer son icône : `launchpad.png` dans le dossier des icônes ;
@@ -53,7 +53,9 @@ Un menu système façon « menu Apple » pour Windows, avec un Dock comme sur ma
 - **icônes personnalisées** : déposez des images `.png` ou `.ico` dans `%APPDATA%\Lumen\icons` ; le nom du fichier est celui du programme sans l'extension (`notepad.png` remplace l'icône de `notepad.exe`). Pour la Corbeille : `trash.png` (vide) et `trash-full.png` (pleine). **Détection automatique d'après les mots** : le fichier n'a pas besoin de porter exactement le nom du `.exe`. Le programme compare le nom du fichier aux mots du nom du programme, de sa description (« Google Chrome ») et du titre de sa fenêtre, sans tenir compte des majuscules, des accents ni des tirets : `chrome.png` ou `google-chrome.png` conviennent pour `chrome.exe`, `bloc-notes.png` pour « Bloc-notes », `calc.png` pour « Calculatrice » (un début de mot d'au moins 4 lettres suffit). Quand plusieurs icônes conviennent, la plus précise (celle qui a le plus de mots) l'emporte, et le nom exact du `.exe` passe toujours en premier. Supprimez le fichier pour retrouver l'icône d'origine. Relancez le programme pour que le changement soit pris en compte ;
 - il se cache quand une application passe en plein écran et se pose juste au-dessus de la barre de Windows (masquez celle-ci automatiquement pour retrouver un écran de Mac : Paramètres → Personnalisation → Barre des tâches → Comportements).
 
-**Réglages** (menu du symbole → « Réglages de Lumen… ») : une fenêtre dessinée par le programme, avec six pages. Chaque changement s'applique tout de suite et s'enregistre dans `%APPDATA%\Lumen\settings.ini` (un réglage par ligne, modifiable à la main ; supprimez le fichier pour tout rétablir).
+**Mises à jour** : la page Réglages > Mises à jour interroge la dernière *release* GitHub du dépôt et compare son numéro à celui de la version installée (fixé à la compilation par `-X main.appVersion=…`, c'est le même que celui du MSI ; une version compilée à la main vaut « dev »). Si une version plus récente existe, « Télécharger et installer » récupère le `Lumen-x64.msi`, `Lumen-x86.msi` ou `Lumen-arm64.msi` de ce PC (adresse et empreinte SHA-256 vérifiées), puis l'ouvre comme un double-clic : Windows demande l'autorisation d'administrateur, l'installateur ferme Lumen, remplace les fichiers et le relance. Le workflow GitHub publie une release à chaque push sur `main`, ce qui alimente cette page.
+
+**Réglages** (menu du symbole → « Réglages de Lumen… ») : une fenêtre dessinée par le programme, avec sept pages. Chaque changement s'applique tout de suite et s'enregistre dans `%APPDATA%\Lumen\settings.ini` (un réglage par ligne, modifiable à la main ; supprimez le fichier pour tout rétablir).
 
 | Page | Réglages |
 |---|---|
@@ -62,9 +64,12 @@ Un menu système façon « menu Apple » pour Windows, avec un Dock comme sur ma
 | Barre | hauteur · nom de l'application active · menus Applications et Fenêtre · horloge : date, secondes, format 24 h / 12 h |
 | Icônes d'état | batterie (et pourcentage) · Wi-Fi · son · recherche · centre de contrôle |
 | Coins actifs | action pour chacun des quatre coins : aucune, Mission Control, Launchpad, Spotlight, bureau |
+| Mises à jour | version installée et dernière version publiée · état · recherche automatique (au démarrage, puis toutes les 6 h) · « Rechercher les mises à jour » · « Télécharger et installer la version X » · voir les versions sur GitHub |
 | Dock | afficher le Dock · taille des icônes · agrandissement · icône du Launchpad · étiquettes · point des applications ouvertes · applications ouvertes non épinglées · Corbeille · rétablir les applications du Dock |
 
 **Aucun ancien menu Windows** : tous les menus (menu principal, Applications, clic droit sur une icône du Dock) et la confirmation avant Redémarrer / Éteindre / Fermer la session sont dessinés par le programme, dans le style de la barre (fond sombre ou clair selon le thème, coins arrondis, surbrillance de la couleur d'accentuation, sous-menus). Au clavier : flèches, Entrée, Échap, et une lettre pour sauter à l'entrée correspondante (pratique dans Applications). Les longues listes défilent à la molette ou en plaçant la souris sur les flèches en haut et en bas.
+
+Licence MIT (`LICENSE`). Pour faire signer l'exécutable gratuitement (et éviter les fausses alertes de Windows Defender), voir `SIGNING.md`.
 
 Le programme est écrit en Go, sans aucune dépendance, et empaqueté en MSI avec WiX. Il se lance à chaque ouverture de session et ne remplace pas la barre des tâches de Windows. Le dessin du Dock (`internal/dockgfx`), le Launchpad (`internal/launchpad`) et les réglages (`internal/config`) sont de petits paquets indépendants de Windows, testés avec `go test ./internal/...`.
 
@@ -103,7 +108,7 @@ Remplacez `amd64` par `386` (32 bits) ou `arm64`, et `x64` par `x86` ou `arm64` 
 set CGO_ENABLED=0
 set GOOS=windows
 set GOARCH=amd64
-go build -ldflags "-s -w -H windowsgui" -o installer\lumen.exe .
+go build -ldflags "-H windowsgui" -o installer\lumen.exe .
 dotnet tool install --global wix --version 5.0.2
 cd installer
 wix build Product.wxs -arch x64 -d Version=1.0.0 -o ..\Lumen-x64.msi

@@ -28,11 +28,14 @@ func powershell(script string, timeout time.Duration) string {
 	return powershellEnc(script, timeout)
 }
 
-// powershellEnc exécute un script (passé en Base64 UTF-16 : pas de souci de guillemets).
+// powershellEnc exécute un script PowerShell passé sur l'entrée standard
+// (« -Command - ») : pas de commande encodée, pas de fichier temporaire, et pas de
+// souci de guillemets ni de stratégie d'exécution. La fenêtre reste invisible.
 func powershellEnc(script string, timeout time.Duration) string {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	c := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand", btEncode(script))
+	c := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "-")
+	c.Stdin = strings.NewReader(script + "\r\nexit\r\n")
 	c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWin}
 	out, _ := c.Output()
 	return strings.TrimSpace(string(out))

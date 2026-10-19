@@ -215,6 +215,7 @@ const (
 	rowSwatch
 	rowButton
 	rowHeader
+	rowInfo // texte à gauche, valeur à droite (non cliquable)
 )
 
 type sRow struct {
@@ -228,6 +229,7 @@ type sRow struct {
 	s              *string
 	opts, names    []string
 	action         func()
+	value          func() string
 }
 
 type sPage struct {
@@ -260,6 +262,10 @@ func rButton(label string, action func()) sRow {
 }
 
 func rHeader(label string) sRow { return sRow{kind: rowHeader, label: label} }
+
+func rInfo(label string, value func() string) sRow {
+	return sRow{kind: rowInfo, label: label, value: value}
+}
 
 func openIconsFolder() {
 	_ = os.MkdirAll(iconsDir(), 0o755)
@@ -317,7 +323,7 @@ func buildPages() {
 			rToggle(tr("Menu Applications", "Applications menu"), &cfg.ShowApps),
 			rToggle(tr("Menu Fenêtre", "Window menu"), &cfg.ShowWindow),
 			rToggle(tr("Masquer automatiquement la barre des menus", "Automatically hide the menu bar"), &cfg.BarAutoHide),
-			rToggle(tr("Masquer la barre des tâches Windows", "Hide the Windows taskbar"), &cfg.HideTaskbar),
+			rToggle(tr("Bloquer la barre des tâches Windows (elle ne remonte plus)", "Block the Windows taskbar (it no longer pops up)"), &cfg.HideTaskbar),
 			rHeader(tr("Horloge", "Clock")),
 			rToggle(tr("Afficher la date", "Show the date"), &cfg.ShowDate),
 			rToggle(tr("Afficher les secondes", "Show seconds"), &cfg.ShowSeconds),
@@ -356,6 +362,7 @@ func buildPages() {
 			rChoice(tr("Bas gauche", "Bottom left"), &cfg.HotBL, config.HotActions, hotNames),
 			rChoice(tr("Bas droit", "Bottom right"), &cfg.HotBR, config.HotActions, hotNames),
 		}},
+		{updPageName(), updPageRows()},
 	}
 	if st.page >= len(st.pages) {
 		st.page = 0

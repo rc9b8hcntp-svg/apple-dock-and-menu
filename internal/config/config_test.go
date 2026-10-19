@@ -81,3 +81,20 @@ func TestMarshalHasEveryKeyOnce(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskbarBlockedAndAutoUpdateByDefault(t *testing.T) {
+	d := Default()
+	if !d.HideTaskbar {
+		t.Error("la barre des tâches Windows doit être bloquée par défaut")
+	}
+	if !d.AutoUpdate {
+		t.Error("la recherche de mises à jour doit être automatique par défaut")
+	}
+	// L'ancienne clé « hide_taskbar=false » est ignorée : le blocage reste actif.
+	if c := Parse("hide_taskbar=false\n"); !c.HideTaskbar {
+		t.Error("l'ancienne clé hide_taskbar ne doit plus compter")
+	}
+	if c := Parse("block_taskbar=false\nauto_update=false\n"); c.HideTaskbar || c.AutoUpdate {
+		t.Error("block_taskbar et auto_update doivent pouvoir être désactivés")
+	}
+}

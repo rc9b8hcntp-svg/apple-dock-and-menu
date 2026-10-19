@@ -8,12 +8,10 @@ package main
 // « Connecté » est une approximation (état du périphérique vu par Windows).
 
 import (
-	"encoding/base64"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	u16 "unicode/utf16"
 )
 
 type btDev struct {
@@ -52,15 +50,6 @@ func btSetScript(on bool) string {
 		s = "On"
 	}
 	return btPrelude + `if($bt){Await ($bt.SetStateAsync('` + s + `')) ([Windows.Devices.Radios.RadioAccessStatus])|Out-Null}`
-}
-
-func btEncode(script string) string {
-	u := u16.Encode([]rune(script))
-	b := make([]byte, 0, len(u)*2)
-	for _, c := range u {
-		b = append(b, byte(c), byte(c>>8))
-	}
-	return base64.StdEncoding.EncodeToString(b)
 }
 
 func btParse(out string) {

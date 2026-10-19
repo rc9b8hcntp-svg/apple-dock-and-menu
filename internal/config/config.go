@@ -22,8 +22,9 @@ var (
 // Config regroupe tous les réglages.
 type Config struct {
 	// Général
-	Language string // auto, fr, en
-	Hotkey   bool   // raccourcis clavier (Ctrl+Alt+M et Ctrl+Alt+L)
+	Language   string // auto, fr, en
+	Hotkey     bool   // raccourcis clavier (Ctrl+Alt+M et Ctrl+Alt+L)
+	AutoUpdate bool   // cherche une mise à jour au démarrage (et toutes les quelques heures)
 
 	// Apparence
 	Theme         string // auto, light, dark
@@ -42,7 +43,7 @@ type Config struct {
 	ShowEdit    bool
 	ShowInput   bool
 	ShowWindow  bool
-	HideTaskbar bool // masque la barre des tâches de Windows
+	HideTaskbar bool // bloque la barre des tâches de Windows : cachée, elle ne remonte plus (activé par défaut)
 
 	// Coins actifs : action quand la souris touche un coin de l'écran
 	HotTL, HotTR, HotBL, HotBR string // none, mission, launchpad, spotlight, desktop
@@ -82,8 +83,9 @@ type Config struct {
 // Default donne les réglages d'origine.
 func Default() Config {
 	return Config{
-		Language: "auto",
-		Hotkey:   true,
+		Language:   "auto",
+		Hotkey:     true,
+		AutoUpdate: true,
 
 		Theme:      "dark",
 		Accent:     "blue",
@@ -100,6 +102,7 @@ func Default() Config {
 		ShowEdit:    true,
 		ShowInput:   true,
 		ShowWindow:  true,
+		HideTaskbar: true,
 
 		ShowBattery:    true,
 		ShowBatteryPct: true,
@@ -149,6 +152,7 @@ func (c *Config) fields() []field {
 	return []field{
 		{key: "language", s: &c.Language, opts: Languages},
 		{key: "hotkey", b: &c.Hotkey},
+		{key: "auto_update", b: &c.AutoUpdate},
 		{key: "theme", s: &c.Theme, opts: Themes},
 		{key: "accent", s: &c.Accent, opts: Accents},
 		{key: "bar_opacity", n: &c.BarOpacity, min: BarOpacityMin, max: BarOpacityMax},
@@ -167,7 +171,7 @@ func (c *Config) fields() []field {
 		{key: "show_edit_menu", b: &c.ShowEdit},
 		{key: "show_input_menu", b: &c.ShowInput},
 		{key: "show_window_menu", b: &c.ShowWindow},
-		{key: "hide_taskbar", b: &c.HideTaskbar},
+		{key: "block_taskbar", b: &c.HideTaskbar},
 		{key: "show_battery", b: &c.ShowBattery},
 		{key: "show_battery_percent", b: &c.ShowBatteryPct},
 		{key: "show_wifi", b: &c.ShowWifi},

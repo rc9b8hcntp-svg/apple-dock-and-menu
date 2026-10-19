@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Fabrique lumen.ico et les fichiers rsrc_windows_*.syso (icône de l'exécutable).
+"""Fabrique lumen.ico et les fichiers rsrc_windows_*.syso (icône et informations de
+version de l'exécutable : nom du produit, numéro de version, description…).
 
-Usage : python3 assets/make_syso.py   (depuis la racine du projet ; demande Pillow)
+Usage : python3 assets/make_syso.py [version]   (depuis la racine du projet ; demande Pillow)
+        ex. python3 assets/make_syso.py 1.0.42   (sans argument : 1.0.0)
 Go inclut automatiquement les fichiers .syso dans l'exécutable Windows."""
-import io, struct, os
+import io, struct, os, sys
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -49,7 +51,52 @@ grp = struct.pack("<HHH", 0, 1, len(images))
 for i, (s, data) in enumerate(images, 1):
     grp += struct.pack("<BBBBHHIH", s % 256, s % 256, 0, 0, 1, 32, len(data), i)
 
-leaves = {3: [(i, d) for i, (s, d) in enumerate(images, 1)], 14: [(1, grp)]}
+# --- ressource : RT_VERSION (16) nom 1 (nom du produit, version, description : Explorateur,
+#     Defender, SmartScreen et la signature de code les lisent)
+VERSION = (sys.argv[1] if len(sys.argv) > 1 else "1.0.0").lstrip("vV")
+try:
+    nums = [int(x) for x in VERSION.split(".")][:4]
+except ValueError:
+    sys.exit("version invalide : %r (attendu : 1.2.3)" % VERSION)
+nums += [0] * (4 - len(nums))
+
+def _pad4(b):
+    return b + b"\0" * (-len(b) % 4)
+
+def _vblock(key, value=b"", vlen=0, wtype=0, children=()):
+    """Un bloc VS_VERSIONINFO : longueur, longueur de la valeur, type, clé UTF-16, valeur, enfants."""
+    data = struct.pack("<HHH", 0, vlen, wtype) + (key + "\0").encode("utf-16-le")
+    data = _pad4(data) + value
+    for c in children:
+        data = _pad4(data) + c
+    return struct.pack("<H", len(data)) + data[2:]
+
+def _vstring(key, text):
+    v = (text + "\0").encode("utf-16-le")
+    return _vblock(key, v, len(v) // 2, 1)
+
+def build_version():
+    ms, ls = (nums[0] << 16) | nums[1], (nums[2] << 16) | nums[3]
+    fixed = struct.pack("<13I", 0xFEEF04BD, 0x00010000, ms, ls, ms, ls,
+                        0x3F, 0, 0x00040004, 1, 0, 0, 0)  # VOS_NT_WINDOWS32, VFT_APP
+    ver = VERSION  # texte tel que donné (« 1.0.42 »)
+    strings = [
+        ("CompanyName", "Maxence"),
+        ("FileDescription", "Lumen - menu système et Dock façon macOS pour Windows"),
+        ("FileVersion", ver),
+        ("InternalName", "lumen"),
+        ("LegalCopyright", "Copyright (c) Maxence"),
+        ("OriginalFilename", "lumen.exe"),
+        ("ProductName", "Lumen"),
+        ("ProductVersion", ver),
+    ]
+    table = _vblock("040904B0", children=[_vstring(k, v) for k, v in strings])
+    sfi = _vblock("StringFileInfo", children=[table])
+    var = _vblock("Translation", struct.pack("<HH", 0x0409, 0x04B0), 4)
+    vfi = _vblock("VarFileInfo", children=[var])
+    return _vblock("VS_VERSION_INFO", fixed, len(fixed), 0, [sfi, vfi])
+
+leaves = {3: [(i, d) for i, (s, d) in enumerate(images, 1)], 14: [(1, grp)], 16: [(1, build_version())]}
 
 def build_rsrc():
     """Arbre de ressources ; renvoie (octets, liste des décalages des champs OffsetToData)."""
@@ -116,4 +163,5 @@ for goarch, (machine, rtype) in ARCH.items():
     name = os.path.join(ROOT, "rsrc_windows_%s.syso" % goarch)
     open(name, "wb").write(hdr + sec + rsrc + rel + sym + strtab)
     print("écrit", os.path.relpath(name, ROOT))
+print("version", VERSION)
 print("écrit assets/lumen.ico", len(ico + body), "octets")

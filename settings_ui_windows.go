@@ -38,12 +38,13 @@ type pageIcon struct {
 }
 
 var pageIcons = []pageIcon{
-	{glyph: "", r: 142, g: 142, b: 147}, // Général
-	{glyph: "", r: 88, g: 86, b: 214},   // Apparence
-	{glyph: "", r: 99, g: 99, b: 102},   // Barre
-	{glyph: "", r: 255, g: 149, b: 0},   // Icônes d'état
-	{custom: 1, r: 10, g: 132, b: 255},   // Dock
-	{custom: 2, r: 52, g: 199, b: 89},    // Coins actifs
+	{glyph: "", r: 142, g: 142, b: 147},    // Général
+	{glyph: "", r: 88, g: 86, b: 214},      // Apparence
+	{glyph: "", r: 99, g: 99, b: 102},      // Barre
+	{glyph: "", r: 255, g: 149, b: 0},      // Icônes d'état
+	{custom: 1, r: 10, g: 132, b: 255},      // Dock
+	{custom: 2, r: 52, g: 199, b: 89},       // Coins actifs
+	{glyph: "\uE895", r: 255, g: 59, b: 48}, // Mises à jour (Segoe MDL2 : Sync)
 }
 
 func lightRect(i int) rect {
@@ -129,6 +130,12 @@ func sLayout() {
 		case rowButton:
 			w := textWidth(dc, row.label) + sc(32)
 			sl.ctl = rect{x0 + sc(14), cy - sc(13), x0 + sc(14) + w, cy + sc(13)}
+		case rowInfo:
+			w := textWidth(dc, row.value())
+			if m := (x1 - x0) / 2; w > m {
+				w = m
+			}
+			sl.ctl = rect{right - w, cy - sc(13), right, cy + sc(13)}
 		}
 		st.slots = append(st.slots, sl)
 		y += rowH
@@ -280,6 +287,10 @@ func drawSettings(hdc uintptr, w, h int32) {
 			drawSwatches(hdc, sl, row)
 		case rowButton:
 			drawPushButton(hdc, sl.ctl, row.label, st.hoverRow == sl.row)
+		case rowInfo:
+			pSelectObject.Call(hdc, fontReg)
+			pSetTextColor.Call(hdc, pal.menuKey)
+			drawText(hdc, row.value(), sl.ctl, dtRight|dtEllipsis)
 		}
 	}
 	// Barre de défilement fine
