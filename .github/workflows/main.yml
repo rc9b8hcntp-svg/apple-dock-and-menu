@@ -33,28 +33,29 @@ jobs:
         with:
           go-version: '1.24'
 
+      - name: Test the Dock renderer
+        shell: pwsh
+        run: go test ./internal/...
+
       - name: Compute version
         id: ver
         shell: pwsh
         run: |
           if ($env:GITHUB_REF -like 'refs/tags/v*') {
             $v = $env:GITHUB_REF_NAME.TrimStart('v')
-            $tag = $env:GITHUB_REF_NAME
           } else {
             $v = "1.0.$env:GITHUB_RUN_NUMBER"
-            $tag = "v1.0.$env:GITHUB_RUN_NUMBER"
           }
           "version=$v" >> $env:GITHUB_OUTPUT
-          "tag_name=$tag" >> $env:GITHUB_OUTPUT
-          Write-Host "Version: $v | Tag: $tag"
+          Write-Host "Version: $v"
 
-      - name: Build menuwin.exe (${{ matrix.arch }})
+      - name: Build lumen.exe (${{ matrix.arch }})
         shell: pwsh
         env:
           CGO_ENABLED: '0'
           GOOS: windows
           GOARCH: ${{ matrix.goarch }}
-        run: go build -trimpath -ldflags "-s -w -H windowsgui" -o installer/menuwin.exe .
+        run: go build -trimpath -ldflags "-s -w -H windowsgui" -o installer/lumen.exe .
 
       - name: Install WiX Toolset
         shell: pwsh
@@ -63,32 +64,45 @@ jobs:
       - name: Build MSI (${{ matrix.arch }})
         shell: pwsh
         working-directory: installer
-        run: wix build Product.wxs -arch ${{ matrix.arch }} -d Version=${{ steps.ver.outputs.version }} -o ../MenuWindows-${{ matrix.arch }}.msi
+        run: wix build Product.wxs -arch ${{ matrix.arch }} -d Version=${{ steps.ver.outputs.version }} -o ../Lumen-${{ matrix.arch }}.msi
 
       - name: Upload MSI
         uses: actions/upload-artifact@v4
         with:
-          name: MenuWindows-${{ matrix.arch }}
-          path: MenuWindows-${{ matrix.arch }}.msi
+          name: Lumen-${{ matrix.arch }}
+          path: Lumen-${{ matrix.arch }}.msi
           if-no-files-found: error
 
   release:
     name: Publish GitHub Release
+    # Publie à chaque push sur main, à chaque tag v* et au lancement manuel
+    # (seules les pull requests ne publient rien).
     if: github.event_name != 'pull_request'
     needs: msi
     runs-on: ubuntu-latest
     steps:
+      - name: Compute tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=v1.0.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download all MSI files
         uses: actions/download-artifact@v4
         with:
-          pattern: MenuWindows-*
+          pattern: Lumen-*
           merge-multiple: true
 
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: "MenuWindows v1.0.${{ github.run_number }}"
-          files: MenuWindows-*.msi
+          tag_name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          name: Lumen ${{ steps.tag.outputs.name }}
+          files: Lumen-*.msi
           generate_release_notes: true
-          prerelease: false
+          make_latest: true
