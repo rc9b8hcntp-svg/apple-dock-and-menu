@@ -55,7 +55,7 @@ jobs:
           CGO_ENABLED: '0'
           GOOS: windows
           GOARCH: ${{ matrix.goarch }}
-        run: go build -trimpath -ldflags "-s -w -H windowsgui" -o installer/lumen.exe .
+        run: go build -trimpath -ldflags "-H windowsgui" -o installer/lumen.exe .
 
       - name: Install WiX Toolset
         shell: pwsh
